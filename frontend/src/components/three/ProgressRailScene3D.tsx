@@ -18,11 +18,7 @@ function Edge({ from, to }: { from: [number, number, number]; to: [number, numbe
   );
 }
 
-function StepNode({
-  position, active, phase, onSelect,
-}: {
-  position: [number, number, number]; active: boolean; phase: number; onSelect: () => void;
-}) {
+function StageNode({ position, active, phase }: { position: [number, number, number]; active: boolean; phase: number }) {
   const mesh = useRef<Mesh>(null);
   const [x, y, z] = position;
 
@@ -35,28 +31,19 @@ function StepNode({
   const color = active ? "#2f63e0" : "#8891a8";
 
   return (
-    <mesh
-      ref={mesh}
-      position={[x, y, z]}
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect();
-      }}
-    >
+    <mesh ref={mesh} position={[x, y, z]}>
       <sphereGeometry args={[radius, 24, 24]} />
       <meshStandardMaterial color={color} emissive={color} emissiveIntensity={active ? 0.75 : 0.12} roughness={0.35} />
     </mesh>
   );
 }
 
-/** Le groupe entier suit mollement le pointeur, comme le hero de la page
- * d'accueil — même vocabulaire de mouvement, pas de contrôle utilisateur
- * (pas d'OrbitControls) : contemplatif, pas manipulable. */
-function RotatingPipeline({
-  count, activeIndex, onSelect,
-}: {
-  count: number; activeIndex: number; onSelect: (i: number) => void;
-}) {
+/** Même vocabulaire de mouvement que le hero et le schéma 3D des labos —
+ * suit mollement le pointeur, aucun contrôle utilisateur. Contrairement au
+ * schéma de labo, purement informatif : ni clic ni sélection, comme la
+ * version 2D du rail (seule l'étape courante se distingue des autres,
+ * aucune interaction n'existe déjà à reproduire). */
+function RotatingRail({ count, activeIndex }: { count: number; activeIndex: number }) {
   const group = useRef<Group>(null);
   const positions = useMemo(() => arcPositions(count), [count]);
   const pointer = useThree((state) => state.pointer);
@@ -75,23 +62,20 @@ function RotatingPipeline({
         <Edge key={i} from={p} to={positions[i + 1]} />
       ))}
       {positions.map((p, i) => (
-        <StepNode key={i} position={p} active={i === activeIndex} phase={i * 0.6} onSelect={() => onSelect(i)} />
+        <StageNode key={i} position={p} active={i === activeIndex} phase={i * 0.6} />
       ))}
     </group>
   );
 }
 
-interface PipelineScene3DProps {
-  stepCount: number;
+interface ProgressRailScene3DProps {
+  stageCount: number;
   activeIndex: number;
-  onSelect: (index: number) => void;
 }
 
-/** Chargé dynamiquement par InteractiveStepPipeline — ne jamais l'importer
- * statiquement ailleurs (fait entrer three.js dans le chunk initial sinon),
- * et seulement à la demande explicite (bascule 2D/3D, jamais au chargement
- * de la page) : plus strict encore que le hero, qui charge dès l'accueil. */
-export default function PipelineScene3D({ stepCount, activeIndex, onSelect }: PipelineScene3DProps) {
+/** Chargé dynamiquement par ProgressRail — jamais importé statiquement
+ * ailleurs (cf. PipelineScene3D.tsx, même principe). */
+export default function ProgressRailScene3D({ stageCount, activeIndex }: ProgressRailScene3DProps) {
   return (
     <Canvas
       camera={{ position: [0, 0.3, 5.5], fov: 42 }}
@@ -101,7 +85,7 @@ export default function PipelineScene3D({ stepCount, activeIndex, onSelect }: Pi
     >
       <ambientLight intensity={0.6} />
       <pointLight position={[3, 4, 5]} intensity={35} color="#ffffff" />
-      <RotatingPipeline count={stepCount} activeIndex={activeIndex} onSelect={onSelect} />
+      <RotatingRail count={stageCount} activeIndex={activeIndex} />
     </Canvas>
   );
 }
