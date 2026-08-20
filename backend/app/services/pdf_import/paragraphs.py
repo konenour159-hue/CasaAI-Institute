@@ -106,7 +106,10 @@ def group_paragraphs(pages: list[Page]) -> list[Paragraph]:
     Le parcours est continu d'une page à l'autre, de sorte qu'un paragraphe
     coupé par un saut de page reste un seul paragraphe.
     """
-    ordered = [line for page in pages for line in page.lines]
+    # Les lignes annotées comme en-tête, pied ou numéro de page par
+    # `margins.analyze_margins` sont écartées du contenu. Si l'analyse n'a pas
+    # été lancée, aucune ligne n'est annotée et rien n'est filtré.
+    ordered = [line for page in pages for line in page.lines if not line.boilerplate]
     if not ordered:
         return []
 

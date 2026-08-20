@@ -51,6 +51,10 @@ class Line:
     y: float
     font_size: float
     fragments: list[Fragment] = field(default_factory=list)
+    # Renseigné par l'analyse des marges : "HEADER", "FOOTER", "PAGE_NUMBER"
+    # ou None. La ligne est annotée plutôt que supprimée, pour pouvoir
+    # justifier la décision et la reconsidérer sans relire le PDF.
+    boilerplate: str | None = None
 
     @property
     def bold_ratio(self) -> float:
