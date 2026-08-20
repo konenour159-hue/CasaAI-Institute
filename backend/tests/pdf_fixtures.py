@@ -43,21 +43,40 @@ class Line:
 
     `y` suit la convention PDF : origine en bas de page, donc un y élevé est
     en haut. Les fixtures ci-dessous partent de 720 et descendent.
+
+    `via_matrix=True` reproduit un procédé courant, observé sur un des
+    documents réels de référence : la police est déclarée à `Tf 1` et la
+    taille réelle est portée par la matrice de texte. La taille brute
+    remontée par pypdf vaut alors 1 pour tout le document, et seule la
+    composition des matrices permet de retrouver la vraie taille.
     """
 
-    def __init__(self, text: str, *, x: int = 72, y: int, size: int = 11, font: str = "regular"):
+    def __init__(
+        self, text: str, *, x: int = 72, y: int, size: int = 11,
+        font: str = "regular", via_matrix: bool = False,
+    ):
         self.text = text
         self.x = x
         self.y = y
         self.size = size
         self.font = font
+        self.via_matrix = via_matrix
 
     def to_stream(self) -> bytes:
-        key = FONTS[self.font][0]
+        key = FONTS[self.font][0].encode()
+        text = b"(" + _escape(self.text) + b") Tj\nET\n"
+        if self.via_matrix:
+            size = str(self.size).encode()
+            return (
+                b"BT\n/" + key + b" 1 Tf\n"
+                + size + b" 0 0 " + size + b" "
+                + str(self.x).encode() + b" " + str(self.y).encode() + b" Tm\n"
+                + text
+            )
         return (
-            b"BT\n/" + key.encode() + b" " + str(self.size).encode() + b" Tf\n"
+            b"BT\n/" + key + b" " + str(self.size).encode() + b" Tf\n"
             + str(self.x).encode() + b" " + str(self.y).encode() + b" Td\n"
-            + b"(" + _escape(self.text) + b") Tj\nET\n"
+            + text
         )
 
 
@@ -330,6 +349,33 @@ def complex_course() -> bytes:
     return build_pdf([page1, page2])
 
 
+def scaled_text_matrix() -> bytes:
+    """Taille de police portée par la matrice de texte (`Tf 1` + `Tm`).
+
+    Reproduit le comportement d'un des ouvrages de référence, où la taille
+    brute vaut 1 pour la totalité du document. Sans composition des matrices,
+    tous les fragments paraissent de même taille et le signal « titre plus
+    gros que le corps » disparaît complètement.
+    """
+    return build_pdf([[
+        Line("Titre porte par la matrice", x=72, y=720, size=20, font="bold", via_matrix=True),
+        Line("Corps de texte porte par la matrice.", x=72, y=690, size=10, via_matrix=True),
+        Line("Seconde ligne de corps.", x=72, y=674, size=10, via_matrix=True),
+    ]])
+
+
+def multi_fragment_line() -> bytes:
+    """Une même ligne visuelle éclatée en plusieurs fragments (changement de
+    police en cours de ligne), à recoller en une seule ligne — mesuré entre
+    1,1 et 2,3 fragments par ligne sur les documents réels."""
+    return build_pdf([[
+        Line("Le terme ", x=72, y=700, size=11),
+        Line("important", x=125, y=700, size=11, font="bold"),
+        Line(" est defini ici.", x=185, y=700, size=11),
+        Line("Ligne suivante, distincte.", x=72, y=680, size=11),
+    ]])
+
+
 ALL_FIXTURES = {
     "simple_course": simple_course,
     "numbered_course": numbered_course,
@@ -344,4 +390,6 @@ ALL_FIXTURES = {
     "hyphenation": hyphenation,
     "complex_course": complex_course,
     "repeated_numbered_headings": repeated_numbered_headings,
+    "scaled_text_matrix": scaled_text_matrix,
+    "multi_fragment_line": multi_fragment_line,
 }
