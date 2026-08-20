@@ -7,6 +7,7 @@ produire les sections d'un import et n'en dépend pas encore. Le branchement
 se fera une fois la chaîne complète (classification, hiérarchie,
 segmentation) constituée et comparée à l'existant.
 """
+from app.services.pdf_import.classifier import Classification, classify, classify_all
 from app.services.pdf_import.extractor import extract_pages
 from app.services.pdf_import.layout import attach_lines, body_font_size, group_lines
 from app.services.pdf_import.margins import (
@@ -36,4 +37,7 @@ __all__ = [
     "content_lines",
     "looks_like_page_number",
     "MarginReport",
+    "classify",
+    "classify_all",
+    "Classification",
 ]

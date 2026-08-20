@@ -21,6 +21,7 @@ import statistics
 
 from app.services.pdf_import.models import Line, Page, Paragraph
 from app.services.pdf_import.normalizer import join_lines
+from app.services.pdf_import.patterns import looks_like_list_item
 
 # Multiple de l'interligne médian au-delà duquel on considère qu'il y a
 # rupture. Les mesures montrent un interligne courant très resserré autour de
@@ -75,6 +76,13 @@ def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, para
     if abs(current.font_size - previous.font_size) > reference * _FONT_CHANGE_TOLERANCE:
         return True
 
+    # Un item de liste est toujours une unité en soi (§18) : sans cette
+    # règle, une énumération se retrouve fondue dans le paragraphe qui
+    # l'introduit (« Les langages les plus utilisés sont : - Python - Java »)
+    # et la liste devient indétectable pour l'étape suivante.
+    if looks_like_list_item(current.text):
+        return True
+
     # Passage de prose à code, ou l'inverse.
     if (current.mono_ratio > 0.6) != (previous.mono_ratio > 0.6):
         return True
@@ -88,8 +96,16 @@ def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, para
     if (current.bold_ratio > 0.6) != (previous.bold_ratio > 0.6):
         return True
 
+    # L'interligne attendu dépend de la taille des lignes concernées, pas
+    # seulement de la médiane du document : un titre en gros corps a un
+    # interligne proportionnellement plus grand. Comparé à la seule médiane
+    # (calculée sur le corps de texte), un titre de 30 pt sur trois lignes
+    # était systématiquement éclaté en trois paragraphes — constaté sur un
+    # ouvrage réel, dont le titre de chapitre ressortait en morceaux
+    # (« Implementing » / « a GPT model from » / « scratch to generate text »).
+    expected = max(leading, reference * 1.15)
     gap = previous.y - current.y
-    if leading > 0 and gap > leading * _PARAGRAPH_GAP_FACTOR:
+    if expected > 0 and gap > expected * _PARAGRAPH_GAP_FACTOR:
         return True
 
     # Retrait de première ligne, pour les documents qui marquent leurs
