@@ -1,5 +1,10 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { LabInteractiveStep } from "../types/api";
+import { supportsWebGL } from "../utils/webgl";
+
+/** Chargé à la demande uniquement (bascule 2D/3D), jamais au chargement de
+ * la page — cf. PipelineScene3D.tsx. */
+const PipelineScene3D = lazy(() => import("./three/PipelineScene3D"));
 
 const NODE_W = 122;
 const NODE_H = 108;
@@ -464,6 +469,13 @@ function StepGlyph({ stepKey, color }: { stepKey: string; color: string }) {
 export function InteractiveStepPipeline({ steps }: { steps: LabInteractiveStep[] }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [can3D, setCan3D] = useState(false);
+  const [mode, setMode] = useState<"2d" | "3d">("2d");
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setCan3D(!reducedMotion && supportsWebGL());
+  }, []);
 
   useEffect(() => {
     if (!playing) return;
@@ -486,11 +498,32 @@ export function InteractiveStepPipeline({ steps }: { steps: LabInteractiveStep[]
     <div className="card" style={{ padding: 24, marginBottom: 32 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 10 }}>
         <h2 style={{ fontSize: "1rem" }}>Schéma interactif — étape par étape</h2>
-        <button className="btn btn-secondary" onClick={() => setPlaying((p) => !p)}>
-          {playing ? "⏸ Pause" : "▶ Lecture automatique"}
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          {/* Pas de bascule proposée si la 3D ne pourrait pas s'afficher
+              correctement (WebGL absent, mouvement réduit demandé) — mieux
+              vaut ne rien offrir qu'un bouton qui mène à un rendu cassé. */}
+          {can3D && (
+            <button className="btn btn-secondary" onClick={() => setMode((m) => (m === "2d" ? "3d" : "2d"))}>
+              {mode === "2d" ? "Vue 3D" : "Vue 2D"}
+            </button>
+          )}
+          <button className="btn btn-secondary" onClick={() => setPlaying((p) => !p)}>
+            {playing ? "⏸ Pause" : "▶ Lecture automatique"}
+          </button>
+        </div>
       </div>
 
+      {mode === "3d" ? (
+        <div style={{ height: 260, marginBottom: 24 }}>
+          <Suspense
+            fallback={
+              <div className="skeleton" style={{ width: "100%", height: "100%", borderRadius: "var(--radius-md)" }} />
+            }
+          >
+            <PipelineScene3D stepCount={steps.length} activeIndex={activeIndex} onSelect={select} />
+          </Suspense>
+        </div>
+      ) : (
       <div style={{ overflowX: "auto", marginBottom: 24, paddingBottom: 8 }}>
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Pipeline d'une requête, étape par étape">
           {steps.map((s, i) => {
@@ -541,6 +574,7 @@ export function InteractiveStepPipeline({ steps }: { steps: LabInteractiveStep[]
           })}
         </svg>
       </div>
+      )}
 
       <div key={active.key} className="reveal reveal-visible">
         <span className="badge badge-gold" style={{ marginBottom: 10 }}>

@@ -1,19 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { HeroVisualStatic } from "./HeroVisualStatic";
+import { supportsWebGL } from "../utils/webgl";
 
 /** Composant 3D chargé dynamiquement : le code three.js/@react-three/fiber
  * n'entre dans aucun chunk chargé au démarrage, seulement quand ce module
  * est réellement importé (voir audit §5 point 4 — budget de performance). */
 const HeroNetworkScene = lazy(() => import("./three/HeroNetworkScene"));
-
-function supportsWebGL(): boolean {
-  try {
-    const canvas = document.createElement("canvas");
-    return !!(canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
-  } catch {
-    return false;
-  }
-}
 
 /** Visuel du Hero de la page d'accueil : scène 3D légère (réseau de nœuds,
  * façon espace d'embeddings) quand le navigateur le permet, repli statique
