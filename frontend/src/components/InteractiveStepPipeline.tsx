@@ -7,7 +7,14 @@ import { supportsWebGL } from "../utils/webgl";
 const PipelineScene3D = lazy(() => import("./three/PipelineScene3D"));
 
 const NODE_W = 122;
-const NODE_H = 108;
+// Zone numéro + glyphe (inchangée) puis zone de titre — élargie après
+// vérification en conditions réelles sur les 8 labs : plusieurs titres
+// wrappent jusqu'à 4 lignes (ex. "Construction du contexte et
+// augmentation du prompt") et se faisaient couper par une zone de texte
+// fixée à 30px, prévue à l'origine pour 2 lignes seulement.
+const GLYPH_ZONE_H = 74;
+const LABEL_ZONE_H = 58;
+const NODE_H = GLYPH_ZONE_H + LABEL_ZONE_H;
 const GAP = 34;
 const STEP_W = NODE_W + GAP;
 const TOP = 14;
@@ -561,10 +568,10 @@ export function InteractiveStepPipeline({ steps }: { steps: LabInteractiveStep[]
                 <text x={NODE_W / 2} y={18} textAnchor="middle" fontSize={10} fontFamily="var(--font-mono)" fill={color}>
                   {String(i + 1).padStart(2, "0")}
                 </text>
-                <g transform={`translate(${NODE_W / 2}, ${NODE_H / 2 + 4})`}>
+                <g transform={`translate(${NODE_W / 2}, ${GLYPH_ZONE_H / 2 + 4})`}>
                   <StepGlyph stepKey={s.key} color={color} />
                 </g>
-                <foreignObject x={6} y={NODE_H - 34} width={NODE_W - 12} height={30}>
+                <foreignObject x={6} y={GLYPH_ZONE_H} width={NODE_W - 12} height={LABEL_ZONE_H}>
                   <div style={{ fontSize: "0.66rem", lineHeight: 1.2, textAlign: "center", color: isActive ? "var(--color-text)" : "var(--color-text-muted)", fontWeight: isActive ? 600 : 400 }}>
                     {s.title}
                   </div>

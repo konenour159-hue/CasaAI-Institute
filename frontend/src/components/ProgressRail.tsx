@@ -156,8 +156,12 @@ export function ProgressRail() {
                   {stage}
                 </span>
                 {isCurrent && currentStage !== null && (
-                  <span aria-hidden className="rail-station-label text-label" style={{ color: "var(--color-accent-blue)" }}>
-                    Vous en êtes là
+                  <span
+                    aria-hidden
+                    className="rail-station-label text-label"
+                    style={{ color: "var(--color-accent-blue)", whiteSpace: "nowrap" }}
+                  >
+                    Ici
                   </span>
                 )}
               </li>
