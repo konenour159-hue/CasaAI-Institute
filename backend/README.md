@@ -76,6 +76,31 @@ def example(db: Session = Depends(get_db)):
     ...
 ```
 
+## Tests automatisés
+
+`tests/` — socle pytest, ajouté pour combler l'absence totale de tests
+constatée lors d'un audit du site (aucun test, ni backend ni frontend).
+Tourne contre la vraie base Postgres du projet (pas de SQLite, pas de
+mocks) : chaque test s'exécute dans sa propre transaction, jamais commitée
+(`join_transaction_mode="create_savepoint"`, cf. `tests/conftest.py`) —
+vérifié en conditions réelles qu'aucune donnée de test ne persiste après la
+suite (comparaison des comptes en base avant/après).
+
+Périmètre actuel : authentification (inscription, doublon d'email, connexion,
+message d'erreur générique login, mot de passe oublié/réinitialisation, refus
+d'un access token comme token de réinitialisation, changement de mot de
+passe) et notation des quiz (score, seuil de réussite, question sans réponse,
+question hors quiz, progression de compétence sur réussite/échec) — les deux
+zones désignées comme priorité par l'audit. À étendre au fil des prochains
+changements plutôt que de viser une couverture exhaustive d'un coup.
+
+```bash
+pip install -r requirements-dev.txt   # une fois par environnement (jamais dans l'image de prod)
+pytest                                 # depuis backend/
+```
+
+17 tests, tous passants.
+
 ## Seed du contenu pédagogique
 
 `data/casa_data.json` est un export du `window.CASA_DATA` du prototype

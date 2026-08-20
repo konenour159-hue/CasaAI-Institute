@@ -1,0 +1,5 @@
+# Dépendances supplémentaires pour lancer les tests (backend/tests/) —
+# jamais installées dans l'image de production, seulement en local/CI.
+-r requirements.txt
+pytest>=8.0
+httpx>=0.27
