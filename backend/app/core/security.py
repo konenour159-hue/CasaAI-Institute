@@ -31,6 +31,7 @@ ALGORITHM = "HS256"
 class TokenType(str, Enum):
     ACCESS = "access"
     REFRESH = "refresh"
+    RESET_PASSWORD = "reset_password"
 
 
 class TokenError(Exception):
@@ -78,6 +79,17 @@ def create_refresh_token(user_id: uuid.UUID, role: str) -> str:
     return _create_token(
         subject=str(user_id), role=role, token_type=TokenType.REFRESH,
         expires_delta=timedelta(days=settings.refresh_token_expire_days),
+    )
+
+
+def create_reset_password_token(user_id: uuid.UUID) -> str:
+    # Durée courte et volontairement indépendante des access/refresh tokens
+    # (§ le mot de passe oublié doit rester utilisable même si la session en
+    # cours a expiré, mais un lien de réinitialisation qui traîne trop
+    # longtemps dans une boîte mail est un risque en soi).
+    return _create_token(
+        subject=str(user_id), role="", token_type=TokenType.RESET_PASSWORD,
+        expires_delta=timedelta(minutes=30),
     )
 
 

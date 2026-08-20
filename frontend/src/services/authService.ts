@@ -20,4 +20,9 @@ export const authService = {
 
   changePassword: (data: { current_password: string; new_password: string }) =>
     api.post<void>("/api/auth/me/password", data, true),
+
+  forgotPassword: (email: string) => api.post<void>("/api/auth/forgot-password", { email }),
+
+  resetPassword: (data: { token: string; new_password: string }) =>
+    api.post<void>("/api/auth/reset-password", data),
 };

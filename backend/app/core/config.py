@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     app_name: str = "CASA AI Institute API"
     environment: Literal["development", "staging", "production"] = "development"
     debug: bool = False
+    frontend_url: str = Field(
+        default="http://localhost:5173",
+        description="Base du frontend, utilisée pour construire les liens envoyés par email (ex: réinitialisation de mot de passe).",
+    )
 
     # --- Base de données -------------------------------------------------
     # Format attendu : postgresql+psycopg2://user:password@host:port/dbname

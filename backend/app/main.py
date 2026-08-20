@@ -5,7 +5,10 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from app.core.rate_limit import limiter
 from app.api.admin_certifications import router as admin_certifications_router
 from app.api.admin_content import router as admin_content_router
 from app.api.admin_media import router as admin_media_router
@@ -23,6 +26,9 @@ app = FastAPI(
     title=settings.app_name,
     debug=settings.debug,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # En développement, le frontend Vite tourne sur un port différent. En
 # production, les origines viennent de CORS_ALLOWED_ORIGINS (voir Settings)

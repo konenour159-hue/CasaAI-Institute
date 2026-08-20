@@ -8,19 +8,28 @@ Routes d'authentification (§5 cahier fonctionnel, §5 cahier technique).
     GET   /api/auth/me
     PATCH /api/auth/me
     POST  /api/auth/me/password
+    POST  /api/auth/forgot-password
+    POST  /api/auth/reset-password
+
+Les routes exposées à un visiteur non authentifié et coûteuses à abuser
+(brute-force de mot de passe, création de comptes en masse, spam d'emails de
+réinitialisation) sont limitées en débit par IP (cf. app/core/rate_limit.py).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import (
     AccessTokenOnly,
+    ForgotPasswordRequest,
     PasswordChangeRequest,
     RefreshRequest,
+    ResetPasswordRequest,
     TokenPair,
     UserLoginRequest,
     UserPublic,
@@ -33,7 +42,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
-def register(payload: UserRegisterRequest, db: Session = Depends(get_db)) -> User:
+@limiter.limit("5/hour")
+def register(request: Request, payload: UserRegisterRequest, db: Session = Depends(get_db)) -> User:
     service = AuthService(db)
     try:
         return service.register(payload)
@@ -42,7 +52,8 @@ def register(payload: UserRegisterRequest, db: Session = Depends(get_db)) -> Use
 
 
 @router.post("/login", response_model=TokenPair)
-def login(payload: UserLoginRequest, db: Session = Depends(get_db)) -> TokenPair:
+@limiter.limit("10/minute")
+def login(request: Request, payload: UserLoginRequest, db: Session = Depends(get_db)) -> TokenPair:
     service = AuthService(db)
     try:
         user = service.authenticate(payload.email, payload.password)
@@ -105,4 +116,24 @@ def change_password(
         service.change_password(current_user, payload)
     except AuthError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    return None
+
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("3/hour")
+def forgot_password(request: Request, payload: ForgotPasswordRequest, db: Session = Depends(get_db)) -> None:
+    # Toujours 204, que l'email existe ou non (cf. AuthService.request_password_reset)
+    # — une réponse différente permettrait de deviner quels emails sont inscrits.
+    AuthService(db).request_password_reset(payload)
+    return None
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("5/hour")
+def reset_password(request: Request, payload: ResetPasswordRequest, db: Session = Depends(get_db)) -> None:
+    service = AuthService(db)
+    try:
+        service.reset_password(payload)
+    except AuthError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return None

@@ -17,11 +17,13 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import (
     TokenError,
     TokenType,
     create_access_token,
     create_refresh_token,
+    create_reset_password_token,
     decode_token,
     hash_password,
     verify_password,
@@ -29,7 +31,15 @@ from app.core.security import (
 from app.models.enums import AccountStatus, UserRole
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.auth import PasswordChangeRequest, TokenPair, UserRegisterRequest, UserUpdateRequest
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    PasswordChangeRequest,
+    ResetPasswordRequest,
+    TokenPair,
+    UserRegisterRequest,
+    UserUpdateRequest,
+)
+from app.services.email_service import EmailService
 
 
 class AuthError(Exception):
@@ -44,6 +54,7 @@ class AuthService:
     def __init__(self, db: Session):
         self.db = db
         self.users = UserRepository(db)
+        self.emails = EmailService()
 
     # --- Inscription -----------------------------------------------------
 
@@ -132,5 +143,36 @@ class AuthService:
     def change_password(self, user: User, payload: PasswordChangeRequest) -> None:
         if not verify_password(payload.current_password, user.password_hash):
             raise AuthError("Mot de passe actuel incorrect.")
+        user.password_hash = hash_password(payload.new_password)
+        self.db.commit()
+
+    # --- Mot de passe oublié ------------------------------------------------
+
+    def request_password_reset(self, payload: ForgotPasswordRequest) -> None:
+        """Ne lève jamais d'erreur et ne révèle jamais si l'email existe —
+        la réponse de l'endpoint est identique dans tous les cas (§ éviter
+        l'énumération de comptes, même principe que l'authentification)."""
+        user = self.users.get_by_email(payload.email)
+        if user is None or user.status != AccountStatus.ACTIVE:
+            return
+        token = create_reset_password_token(user.id)
+        reset_url = f"{settings.frontend_url}/reset-password?token={token}"
+        self.emails.send_password_reset_email(user.email, reset_url)
+
+    def reset_password(self, payload: ResetPasswordRequest) -> None:
+        try:
+            token_payload = decode_token(payload.token, expected_type=TokenType.RESET_PASSWORD)
+        except TokenError as e:
+            raise AuthError("Lien de réinitialisation invalide ou expiré.") from e
+
+        try:
+            user_id = uuid.UUID(token_payload["sub"])
+        except (KeyError, ValueError) as e:
+            raise AuthError("Lien de réinitialisation invalide ou expiré.") from e
+
+        user = self.users.get_by_id(user_id)
+        if user is None or user.status != AccountStatus.ACTIVE:
+            raise AuthError("Lien de réinitialisation invalide ou expiré.")
+
         user.password_hash = hash_password(payload.new_password)
         self.db.commit()

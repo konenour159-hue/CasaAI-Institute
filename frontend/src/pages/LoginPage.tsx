@@ -49,7 +49,12 @@ export function LoginPage() {
             />
           </div>
           <div className="field">
-            <label htmlFor="password">Mot de passe</label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <label htmlFor="password">Mot de passe</label>
+              <Link to="/forgot-password" style={{ fontSize: "0.82rem", color: "var(--color-accent-blue)" }}>
+                Mot de passe oublié ?
+              </Link>
+            </div>
             <input
               id="password"
               type="password"
