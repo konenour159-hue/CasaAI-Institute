@@ -1,0 +1,19 @@
+.env
+*.env
+!.env.docker.example
+!backend/.env.example
+
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Images uploadées en local (stockage MVP, cf. backend/app/services/storage_service.py)
+backend/media/
+
+node_modules/
+dist/
+build/
+
+.DS_Store

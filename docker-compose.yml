@@ -1,0 +1,75 @@
+name: casa-ai-institute
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-casa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-casa}
+      POSTGRES_DB: ${POSTGRES_DB:-casa_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Exécuté automatiquement par l'image officielle Postgres au tout
+      # premier démarrage (utilisateur superuser du conteneur) : crée les
+      # extensions pgcrypto/citext/vector avant qu'Alembic n'y touche.
+      # Évite le problème de droits rencontré en installation manuelle
+      # (l'utilisateur applicatif n'a normalement pas ces droits).
+      - ./db/provision_extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-casa} -d ${POSTGRES_DB:-casa_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Dans le réseau Docker, les services se joignent par leur nom, pas
+      # par localhost — on surcharge donc DATABASE_URL/REDIS_URL ici plutôt
+      # que de dépendre de ce qui est écrit dans .env (pensé pour un usage
+      # hors-Docker).
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-casa}:${POSTGRES_PASSWORD:-casa}@postgres:5432/${POSTGRES_DB:-casa_dev}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # --- Frontend (React/TS/Vite) --------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:${BACKEND_PORT:-8000}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:

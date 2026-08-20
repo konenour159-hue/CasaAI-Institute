@@ -1,0 +1,945 @@
+:root {
+  color-scheme: light;
+
+  /* --- Couleurs ---
+     Palette "Aurore" : fond blanc, duo bleu + jaune comme identité de marque
+     (bleu = accent principal/interactif, jaune = mise en avant/premium).
+     Teal et corail redeviennent des couleurs strictement sémantiques
+     (réussite / erreur), plus des accents génériques — cf. décision du
+     changement de thème. Les teintes de texte (gold/teal/coral) sont
+     volontairement plus foncées que leurs équivalents "remplissage" pour
+     rester lisibles sur fond blanc (contraste ≥ 4.5:1). */
+  --color-bg: #ffffff;
+  --color-surface: #f7f9fc;
+  --color-surface-raised: #eef2f8;
+  --color-text: #10182b;
+  --color-text-muted: #5b6478;
+  --color-border: #e1e7ef;
+  --color-accent-blue: #2f63e0;
+  --color-accent-blue-soft: #e8eefc;
+  --color-accent-gold: #8a6100;
+  --color-accent-gold-soft: #faf1d6;
+  --color-accent-teal: #0c7a5e;
+  --color-accent-teal-soft: #e1f4ee;
+  --color-accent-coral: #c0392b;
+  --color-accent-coral-soft: #fbe8e5;
+
+  /* --- Typographie --- */
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+  /* --- Rayons / ombres --- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-card: 0 12px 32px -18px rgba(16, 24, 43, 0.12);
+  --shadow-card-hover: 0 20px 40px -18px rgba(16, 24, 43, 0.18);
+
+  /* --- Système d'animation ---
+     Un seul jeu de durées/easings réutilisé partout (boutons, cartes, nav,
+     reveal au scroll) pour une identité de mouvement cohérente sur tout le
+     site plutôt qu'une animation différente par composant. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-micro: 180ms;
+  --duration-hover: 400ms;
+  --duration-transition: 320ms;
+  --duration-reveal: 650ms;
+
+  font-family: var(--font-body);
+  color: var(--color-text);
+  background-color: var(--color-bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- Échelle typographique ---
+   Une seule échelle, définie une fois, plutôt qu'une taille de titre
+   redéfinie dans chaque page (cf. audit : h1 allait de 1.6rem à 2.6rem selon
+   la page sans raison). Les tailles suivent le contenu qu'elles introduisent
+   (cours > section > sous-section), pas l'esthétique d'une page en
+   particulier. clamp() fait varier la taille en douceur entre mobile et
+   desktop plutôt que de dépendre de breakpoints fixes. */
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.625rem, 1.35rem + 1.4vw, 2.5rem); /* ~26px → 40px, cf. §5 H1 */
+  line-height: 1.2;
+  margin: 0;
+}
+
+h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.375rem, 1.2rem + 0.9vw, 1.875rem); /* ~22px → 30px, cf. §5 H2 */
+  line-height: 1.3;
+  margin: 0;
+}
+
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(1.2rem, 1.1rem + 0.4vw, 1.375rem); /* ~19px → 22px, cf. §5 H3 */
+  line-height: 1.35;
+  margin: 0;
+}
+
+h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Titre marketing (Hero de la page d'accueil uniquement) : au-dessus de H1,
+   réservé au contenu non pédagogique — un cours ou une leçon n'utilise
+   jamais cette classe, pour ne jamais rivaliser en poids visuel avec le
+   contenu à apprendre (cf. §27 : le contenu pédagogique est le héros). */
+.text-display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2rem, 1.6rem + 2.2vw, 2.9rem);
+  line-height: 1.15;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+strong,
+b {
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* Étiquette discrète en petites capitales — utilisée pour les labels de
+   callouts pédagogiques ("OBJECTIF D'APPRENTISSAGE"), jamais pour du texte
+   de lecture. */
+.text-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.text-caption {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Les pseudo-éléments de la View Transitions API (navigation entre pages)
+     ne sont pas couverts par le sélecteur ::before/::after ci-dessus — sans
+     cette règle, une navigation resterait animée malgré la préférence. */
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* --- Transition de page (View Transitions API) ---
+   Un simple fondu de continuité entre deux pages, dans les durées du
+   système d'animation existant, plutôt que le cross-fade par défaut du
+   navigateur (souvent un peu long). Sans effet si le navigateur ne supporte
+   pas l'API — react-router-dom (voir components/AppLink.tsx) ne déclenche
+   la transition que si elle est disponible. */
+::view-transition-old(root) {
+  animation: page-fade-out var(--duration-transition) var(--ease-in-out) forwards;
+}
+
+::view-transition-new(root) {
+  animation: page-fade-in var(--duration-transition) var(--ease-in-out) forwards;
+}
+
+@keyframes page-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+code,
+.mono {
+  font-family: var(--font-mono);
+}
+
+.container {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+/* Le lift au survol ne s'applique qu'aux cartes réellement cliquables (un
+   <a class="card">) — une carte de contenu statique ne doit pas suggérer une
+   interaction qu'elle n'offre pas. Ciblé par sélecteur plutôt que par une
+   classe à ajouter partout : chaque carte-lien du site en bénéficie sans
+   modification par page. */
+a.card {
+  transition: transform var(--duration-hover) var(--ease-out),
+    box-shadow var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out);
+}
+
+a.card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--color-accent-blue);
+}
+
+a.card:active {
+  transform: translateY(-2px);
+  transition-duration: var(--duration-micro);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: transform var(--duration-hover) var(--ease-out),
+    opacity var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out),
+    box-shadow var(--duration-hover) var(--ease-out),
+    background var(--duration-hover) var(--ease-out),
+    color var(--duration-hover) var(--ease-out);
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+}
+
+.btn:active {
+  transform: scale(0.98) translateY(0);
+  transition-duration: var(--duration-micro);
+}
+
+.btn-primary {
+  background: var(--color-accent-blue);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  opacity: 0.92;
+  box-shadow: 0 10px 24px -10px rgba(47, 99, 224, 0.5);
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+/* Inversion de couleur au survol — plutôt qu'un simple changement de
+   bordure, le bouton se remplit de l'accent principal (validé sur la
+   maquette de palette avant application ici). */
+.btn-secondary:hover {
+  background: var(--color-accent-blue);
+  border-color: var(--color-accent-blue);
+  color: #ffffff;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.field input {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+}
+
+.field input:focus {
+  border-color: var(--color-accent-blue);
+}
+
+.error-text {
+  color: var(--color-accent-coral);
+  font-size: 0.85rem;
+}
+
+.success-text {
+  color: var(--color-accent-teal);
+  font-size: 0.85rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+.badge-gold {
+  background: var(--color-accent-gold-soft);
+  color: var(--color-accent-gold);
+}
+
+.badge-teal {
+  background: var(--color-accent-teal-soft);
+  color: var(--color-accent-teal);
+}
+
+.badge-coral {
+  background: var(--color-accent-coral-soft);
+  color: var(--color-accent-coral);
+}
+
+/* --- Reveal au scroll (LessonPage) --- */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity var(--duration-reveal) var(--ease-out),
+    transform var(--duration-reveal) var(--ease-out);
+}
+
+.reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* --- Hero (page d'accueil) --- */
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 32px;
+  padding: 48px 0 64px;
+}
+
+.hero-visual {
+  aspect-ratio: 1 / 1;
+  max-width: 420px;
+  justify-self: center;
+}
+
+@media (max-width: 860px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+    padding: 32px 0 40px;
+  }
+
+  .hero-visual {
+    max-width: 220px;
+  }
+}
+
+/* --- Rail pédagogique ---
+   En dessous de ~700px, 8 étiquettes de 84px ne tiennent plus côte à côte
+   sans se chevaucher (constaté à l'audit : -37px de recouvrement à 327px de
+   large). Les cercles restent visibles et espacés, seule l'étiquette
+   textuelle par étape disparaît — le nom complet de chaque étape reste
+   disponible pour les lecteurs d'écran via aria-label sur le <li>. */
+.rail-caption {
+  display: none;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  margin-top: 8px;
+}
+
+@media (max-width: 700px) {
+  .rail-station-label {
+    display: none;
+  }
+
+  .rail-caption {
+    display: block;
+  }
+}
+
+/* --- Navigation --- */
+
+/* Un simple changement de couleur au survol se sentait trop faible (retour
+   direct) : un soulignement animé qui se déploie depuis la gauche rend le
+   hover perceptible, sans dépendre de la seule couleur pour signaler
+   l'interactivité. */
+.nav-link,
+.nav-link-accent {
+  position: relative;
+  padding-bottom: 4px;
+}
+
+.nav-link::after,
+.nav-link-accent::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 2px;
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--duration-hover) var(--ease-out);
+}
+
+.nav-link {
+  color: var(--color-text-muted);
+  transition: color var(--duration-hover) var(--ease-out);
+}
+
+.nav-link::after {
+  background: var(--color-accent-blue);
+}
+
+.nav-link:hover {
+  color: var(--color-text);
+}
+
+.nav-link:hover::after {
+  transform: scaleX(1);
+}
+
+.nav-link-accent {
+  color: var(--color-accent-gold);
+  transition: opacity var(--duration-hover) var(--ease-out);
+}
+
+.nav-link-accent::after {
+  background: var(--color-accent-gold);
+}
+
+.nav-link-accent:hover {
+  opacity: 0.8;
+}
+
+.nav-link-accent:hover::after {
+  transform: scaleX(1);
+}
+
+/* --- Section de leçon --- */
+
+.lesson-section-number {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-accent-gold);
+  letter-spacing: 0.06em;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.lesson-section-title {
+  /* Même palier que le H2 générique (une section de leçon = une "Section" au
+     sens de l'échelle typographique) — pas de taille dédiée plus petite,
+     sous peine de faire coïncider visuellement Section et Sous-section
+     (constaté à l'audit : 20.8px vs 20.7px pour le H3 "Approfondir"). */
+  margin-bottom: 14px;
+}
+
+.lesson-section-body {
+  color: var(--color-text);
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  white-space: pre-line;
+}
+
+.lesson-image-caption {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin-top: 8px;
+}
+
+/* --- Onglets de profondeur (LessonPage) --- */
+
+.depth-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  transition: color var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out);
+}
+
+.depth-tab:hover {
+  color: var(--color-text);
+}
+
+.depth-tab.active {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* --- Barre de progression de lecture (LessonPage) --- */
+
+.reading-progress-track {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 3px;
+  background: var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 32px;
+}
+
+.reading-progress-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, var(--color-accent-blue), var(--color-accent-gold));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--duration-micro) linear;
+}
+
+/* --- Largeur de lecture ---
+   Le contenu pédagogique (leçon, cours) n'est pas du texte de dashboard :
+   une colonne de lecture contrôlée, pas une page pleine largeur. */
+.course-content {
+  max-width: 760px;
+}
+
+/* --- Callouts pédagogiques ---
+   Un seul composant visuel de base (bordure gauche colorée + léger fond
+   teinté, pas une carte à ombre portée) décliné par variante sémantique.
+   Volontairement plus discret qu'une .card : sert à créer une hiérarchie,
+   pas à mettre un cadre autour de chaque phrase (cf. §11). */
+.callout {
+  border-left: 3px solid var(--color-border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 16px 20px;
+  margin: 24px 0;
+}
+
+.callout-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.callout-body {
+  color: var(--color-text);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.callout-objective {
+  border-left-color: var(--color-accent-gold);
+  background: var(--color-accent-gold-soft);
+}
+.callout-objective .text-label {
+  color: var(--color-accent-gold);
+}
+
+.callout-example {
+  border-left-color: var(--color-accent-teal);
+  background: var(--color-accent-teal-soft);
+}
+.callout-example .text-label {
+  color: var(--color-accent-teal);
+}
+
+.callout-important,
+.callout-warning {
+  border-left-color: var(--color-accent-coral);
+  background: var(--color-accent-coral-soft);
+}
+.callout-important .text-label,
+.callout-warning .text-label {
+  color: var(--color-accent-coral);
+}
+
+.callout-tip,
+.callout-takeaway {
+  border-left-color: var(--color-accent-teal);
+  background: var(--color-surface);
+}
+.callout-tip .text-label,
+.callout-takeaway .text-label {
+  color: var(--color-accent-teal);
+}
+
+.callout-definition {
+  border-left-color: var(--color-text-muted);
+  background: var(--color-surface);
+}
+.callout-definition .text-label {
+  color: var(--color-text-muted);
+}
+
+/* --- Quiz --- */
+
+.quiz-progress-label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.quiz-question {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: clamp(1.0625rem, 1rem + 0.35vw, 1.2rem); /* ~17px → 19px, cf. §17 */
+  line-height: 1.45;
+  color: var(--color-text);
+  margin: 0 0 16px;
+}
+
+/* Option de réponse : zone tactile généreuse, et l'état "sélectionné" ne
+   repose jamais sur la seule couleur de bordure — un point plein apparaît
+   dans le radio et le poids du texte change (cf. §19 : ne pas dépendre
+   uniquement de la couleur). */
+.quiz-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  font-size: 1rem;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: border-color var(--duration-hover) var(--ease-out),
+    background var(--duration-hover) var(--ease-out),
+    transform var(--duration-micro) var(--ease-out);
+}
+
+.quiz-option:hover {
+  border-color: var(--color-accent-blue);
+}
+
+.quiz-option:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 2px;
+}
+
+.quiz-option:active {
+  transform: scale(0.99);
+}
+
+/* "Sélectionné" (le choix en cours de l'apprenant) reste sur l'accent
+   principal — la couleur de réussite (teal) est réservée à l'état "correct"
+   une fois le quiz corrigé, jamais avant, pour ne pas préjuger de la
+   réponse pendant qu'elle est encore en train d'être choisie. */
+.quiz-option.selected {
+  border-color: var(--color-accent-blue);
+  background: var(--color-accent-blue-soft);
+  font-weight: 500;
+}
+
+.quiz-option.correct {
+  border-color: var(--color-accent-teal);
+  background: var(--color-accent-teal-soft);
+  font-weight: 600;
+}
+
+.quiz-option.incorrect {
+  border-color: var(--color-accent-coral);
+  background: var(--color-accent-coral-soft);
+  font-weight: 500;
+}
+
+.quiz-option-icon {
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.quiz-feedback {
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  margin-top: 12px;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  animation: feedback-in var(--duration-transition) var(--ease-out);
+}
+
+.quiz-feedback-correct {
+  background: var(--color-accent-teal-soft);
+  color: var(--color-text);
+  border-left: 3px solid var(--color-accent-teal);
+}
+
+.quiz-feedback-incorrect {
+  background: var(--color-accent-coral-soft);
+  color: var(--color-text);
+  border-left: 3px solid var(--color-accent-coral);
+}
+
+@keyframes feedback-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quiz-feedback {
+    animation: none;
+  }
+}
+
+/* --- Quiz : navigation en mode "slide" ---
+   Une question à la fois plutôt qu'un long défilement : chaque question
+   entre avec un léger glissement directionnel (depuis la droite en avançant,
+   depuis la gauche en reculant) pour que le sens du parcours reste
+   perceptible, pas un simple fondu générique. Couvertes par la règle globale
+   prefers-reduced-motion en tête de fichier (durée forcée à 0.01ms), donc
+   rien de spécifique à répéter ici. */
+.quiz-slide-viewport {
+  overflow: hidden;
+}
+
+.quiz-slide {
+  animation-duration: var(--duration-transition);
+  animation-timing-function: var(--ease-out);
+  animation-fill-mode: both;
+}
+
+.quiz-slide-in-next {
+  animation-name: quiz-slide-in-next;
+}
+
+.quiz-slide-in-prev {
+  animation-name: quiz-slide-in-prev;
+}
+
+@keyframes quiz-slide-in-next {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes quiz-slide-in-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.quiz-fade-in {
+  animation: quiz-fade-in var(--duration-hover) var(--ease-out) both;
+}
+
+@keyframes quiz-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.quiz-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  transition: transform var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out),
+    background var(--duration-hover) var(--ease-out),
+    opacity var(--duration-hover) var(--ease-out);
+}
+
+.quiz-nav-btn:hover:not(:disabled) {
+  border-color: var(--color-accent-blue);
+  background: var(--color-surface);
+}
+
+.quiz-nav-btn[data-dir="prev"]:hover:not(:disabled) {
+  transform: translateX(-3px);
+}
+
+.quiz-nav-btn[data-dir="next"]:hover:not(:disabled) {
+  transform: translateX(3px);
+}
+
+.quiz-nav-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.quiz-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.quiz-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.quiz-dot {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  transition: transform var(--duration-micro) var(--ease-out),
+    background var(--duration-hover) var(--ease-out),
+    border-color var(--duration-hover) var(--ease-out);
+}
+
+.quiz-dot:hover {
+  transform: scale(1.3);
+}
+
+.quiz-dot.answered {
+  background: var(--color-accent-blue);
+  border-color: var(--color-accent-blue);
+}
+
+.quiz-dot.current {
+  border-color: var(--color-accent-blue);
+  transform: scale(1.5);
+}
+
+.quiz-dot.current:hover {
+  transform: scale(1.5);
+}
+
+/* --- Skeleton (état de chargement) ---
+   Évite le passage brutal écran vide → contenu : une forme de la bonne
+   taille apparaît immédiatement, le contenu la remplace sans déplacement de
+   layout (cf. §31 Chargement). */
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-surface) 25%,
+    var(--color-surface-raised) 50%,
+    var(--color-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--color-surface-raised);
+  }
+}
