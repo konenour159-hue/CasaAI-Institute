@@ -16,6 +16,7 @@ from app.schemas.content import (
     CourseDetailOut,
     CourseListOut,
     CourseListResponse,
+    GoalOut,
     LabDetailOut,
     LabListOut,
     LabListResponse,
@@ -23,6 +24,7 @@ from app.schemas.content import (
     PathwayDetailOut,
     PathwayListOut,
     PathwayListResponse,
+    ProfileTypeOut,
     ResourceOut,
     SchoolOut,
     SkillOut,
@@ -34,6 +36,19 @@ router = APIRouter(prefix="/api", tags=["content"])
 @router.get("/schools", response_model=list[SchoolOut])
 def list_schools(db: Session = Depends(get_db)) -> list:
     return ContentRepository(db).list_schools()
+
+
+@router.get("/profile-types", response_model=list[ProfileTypeOut])
+def list_profile_types(db: Session = Depends(get_db)) -> list:
+    """Catalogue des personas (Direction, Manager, Consultant, Data
+    Engineer...) proposées à l'onboarding — cf. app/api/profile.py pour la
+    lecture/écriture du profil d'un apprenant."""
+    return ContentRepository(db).list_profile_types()
+
+
+@router.get("/goals", response_model=list[GoalOut])
+def list_goals(db: Session = Depends(get_db)) -> list:
+    return ContentRepository(db).list_goals()
 
 
 @router.get("/skills", response_model=list[SkillOut])

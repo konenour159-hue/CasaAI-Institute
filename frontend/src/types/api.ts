@@ -47,6 +47,26 @@ export interface Skill {
   description: string | null;
 }
 
+export interface ProfileType {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+export interface Goal {
+  id: string;
+  label: string;
+}
+
+export interface UserProfile {
+  profile_type_id: string | null;
+  level: string | null;
+  career_objectives: string | null;
+  onboarding_done: boolean;
+  goal_ids: string[];
+  interest_skill_ids: string[];
+}
+
 export interface LessonSummary {
   id: string;
   title: string;

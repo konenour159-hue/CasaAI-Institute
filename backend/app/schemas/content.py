@@ -22,6 +22,21 @@ class SkillOut(BaseModel):
     description: str | None = None
 
 
+class ProfileTypeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    description: str | None = None
+
+
+class GoalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    label: str
+
+
 class LessonSummaryOut(BaseModel):
     """Aperçu d'une leçon dans le cadre d'un cours — le contenu complet
     (sections, objectifs, niveaux de profondeur) n'est exposé que via

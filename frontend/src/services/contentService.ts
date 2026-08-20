@@ -2,11 +2,13 @@ import { api } from "./apiClient";
 import type {
   CourseDetail,
   CourseListItem,
+  Goal,
   LabDetail,
   LabListItem,
   Page,
   PathwayDetail,
   PathwayListItem,
+  ProfileType,
   School,
   Skill,
 } from "../types/api";
@@ -15,6 +17,8 @@ export const contentService = {
   listSchools: () => api.get<School[]>("/api/schools"),
   listSkills: (schoolId?: string) =>
     api.get<Skill[]>(`/api/skills${schoolId ? `?school_id=${schoolId}` : ""}`),
+  listProfileTypes: () => api.get<ProfileType[]>("/api/profile-types"),
+  listGoals: () => api.get<Goal[]>("/api/goals"),
 
   listCourses: (params: { schoolId?: string; level?: string; limit?: number; offset?: number } = {}) => {
     const q = new URLSearchParams();

@@ -19,6 +19,7 @@ from app.api.auth import router as auth_router
 from app.api.certifications import router as certifications_router
 from app.api.content import router as content_router
 from app.api.portfolio import router as portfolio_router
+from app.api.profile import router as profile_router
 from app.api.progress import router as progress_router
 from app.core.config import settings
 
@@ -46,6 +47,7 @@ app.include_router(auth_router)
 app.include_router(content_router)
 app.include_router(progress_router)
 app.include_router(portfolio_router)
+app.include_router(profile_router)
 app.include_router(certifications_router)
 app.include_router(admin_users_router)
 app.include_router(admin_content_router)

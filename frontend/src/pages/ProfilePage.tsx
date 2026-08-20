@@ -5,12 +5,17 @@ import { authService } from "../services/authService";
 import { progressService } from "../services/progressService";
 import { certificationService } from "../services/certificationService";
 import { portfolioService } from "../services/portfolioService";
+import { profileService } from "../services/profileService";
+import { contentService } from "../services/contentService";
 import { ApiError } from "../services/apiClient";
 import { RevealSection } from "../components/RevealSection";
 import type {
   CourseCertificate,
+  Goal,
   PortfolioEvidence,
+  ProfileType,
   QuizAttemptHistoryItem,
+  Skill,
   UserRole,
   UserSkillProgress,
 } from "../types/api";
@@ -59,12 +64,45 @@ export function ProfilePage() {
   const [portfolioItems, setPortfolioItems] = useState<PortfolioEvidence[] | null>(null);
   const [quizHistory, setQuizHistory] = useState<QuizAttemptHistoryItem[] | null>(null);
 
+  const [profileTypes, setProfileTypes] = useState<ProfileType[]>([]);
+  const [goalsCatalog, setGoalsCatalog] = useState<Goal[]>([]);
+  const [skillsCatalog, setSkillsCatalog] = useState<Skill[]>([]);
+  const [profileTypeId, setProfileTypeId] = useState("");
+  const [level, setLevel] = useState("");
+  const [careerObjectives, setCareerObjectives] = useState("");
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [learningError, setLearningError] = useState<string | null>(null);
+  const [learningSuccess, setLearningSuccess] = useState(false);
+  const [savingLearning, setSavingLearning] = useState(false);
+
   useEffect(() => {
     progressService.getMySkills().then(setSkills).catch(() => setSkills([]));
     certificationService.listMyCourseCertificates().then(setCertificates).catch(() => setCertificates([]));
     portfolioService.listMine().then(setPortfolioItems).catch(() => setPortfolioItems([]));
     progressService.getMyQuizHistory().then(setQuizHistory).catch(() => setQuizHistory([]));
+
+    contentService.listProfileTypes().then(setProfileTypes).catch(() => setProfileTypes([]));
+    contentService.listGoals().then(setGoalsCatalog).catch(() => setGoalsCatalog([]));
+    contentService.listSkills().then(setSkillsCatalog).catch(() => setSkillsCatalog([]));
+    profileService
+      .getMyOnboardingProfile()
+      .then((p) => {
+        setProfileTypeId(p.profile_type_id ?? "");
+        setLevel(p.level ?? "");
+        setCareerObjectives(p.career_objectives ?? "");
+        setSelectedGoals(p.goal_ids);
+        setSelectedSkills(p.interest_skill_ids);
+      })
+      .catch(() => {});
   }, []);
+
+  const toggleGoal = (id: string) => {
+    setSelectedGoals((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
+  };
+  const toggleInterestSkill = (id: string) => {
+    setSelectedSkills((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  };
 
   if (!user) return null;
 
@@ -89,6 +127,27 @@ export function ProfilePage() {
       setInfoError(err instanceof ApiError ? err.detail : "Une erreur est survenue.");
     } finally {
       setSavingInfo(false);
+    }
+  };
+
+  const handleLearningSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setLearningError(null);
+    setLearningSuccess(false);
+    setSavingLearning(true);
+    try {
+      await profileService.updateMyOnboardingProfile({
+        profile_type_id: profileTypeId || null,
+        level: level || null,
+        career_objectives: careerObjectives || null,
+        goal_ids: selectedGoals,
+        interest_skill_ids: selectedSkills,
+      });
+      setLearningSuccess(true);
+    } catch (err) {
+      setLearningError(err instanceof ApiError ? err.detail : "Une erreur est survenue.");
+    } finally {
+      setSavingLearning(false);
     }
   };
 
@@ -205,6 +264,118 @@ export function ProfilePage() {
       </RevealSection>
 
       <RevealSection as="div" delayMs={120}>
+        <h2 style={{ fontSize: "1.05rem", marginBottom: 16 }}>Profil d'apprentissage</h2>
+        <form
+          onSubmit={handleLearningSubmit}
+          className="card"
+          style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16, marginBottom: 40 }}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="field">
+              <label htmlFor="profile_type">Profil</label>
+              <select
+                id="profile_type"
+                value={profileTypeId}
+                onChange={(e) => setProfileTypeId(e.target.value)}
+                style={{
+                  background: "var(--color-surface-raised)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-sm)",
+                  padding: "10px 12px",
+                }}
+              >
+                <option value="">Non renseigné</option>
+                {profileTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="level">Niveau</label>
+              <input
+                id="level"
+                value={level}
+                onChange={(e) => setLevel(e.target.value)}
+                placeholder="ex : débutant, intermédiaire, avancé"
+              />
+            </div>
+          </div>
+
+          <div className="field">
+            <label htmlFor="career_objectives">Objectifs de carrière</label>
+            <textarea
+              id="career_objectives"
+              rows={3}
+              value={careerObjectives}
+              onChange={(e) => setCareerObjectives(e.target.value)}
+              style={{
+                background: "var(--color-surface-raised)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-sm)",
+                padding: "10px 12px",
+                fontFamily: "inherit",
+                fontSize: "0.95rem",
+                resize: "vertical",
+              }}
+            />
+          </div>
+
+          <div className="field">
+            <label>Ce que vous cherchez à faire</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {goalsCatalog.map((g) => (
+                <button
+                  type="button"
+                  key={g.id}
+                  onClick={() => toggleGoal(g.id)}
+                  className="badge"
+                  style={{
+                    cursor: "pointer",
+                    border: "1px solid var(--color-border)",
+                    background: selectedGoals.includes(g.id) ? "var(--color-accent-blue-soft)" : "transparent",
+                    color: selectedGoals.includes(g.id) ? "var(--color-accent-blue)" : "var(--color-text-muted)",
+                  }}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Compétences déjà acquises</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 140, overflowY: "auto", padding: 4 }}>
+              {skillsCatalog.map((s) => (
+                <button
+                  type="button"
+                  key={s.id}
+                  onClick={() => toggleInterestSkill(s.id)}
+                  className="badge"
+                  style={{
+                    cursor: "pointer",
+                    border: "1px solid var(--color-border)",
+                    background: selectedSkills.includes(s.id) ? "var(--color-accent-blue-soft)" : "transparent",
+                    color: selectedSkills.includes(s.id) ? "var(--color-accent-blue)" : "var(--color-text-muted)",
+                  }}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {learningError && <p className="error-text">{learningError}</p>}
+          {learningSuccess && <p className="success-text">Profil d'apprentissage mis à jour.</p>}
+
+          <button type="submit" className="btn btn-primary" disabled={savingLearning} style={{ alignSelf: "flex-start" }}>
+            {savingLearning ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </form>
+      </RevealSection>
+
+      <RevealSection as="div" delayMs={160}>
         <h2 style={{ fontSize: "1.05rem", marginBottom: 16 }}>Sécurité</h2>
         <form
           onSubmit={handlePasswordSubmit}
@@ -256,7 +427,7 @@ export function ProfilePage() {
         </form>
       </RevealSection>
 
-      <RevealSection as="div" delayMs={160}>
+      <RevealSection as="div" delayMs={200}>
         <h2 style={{ fontSize: "1.05rem", marginBottom: 16 }}>Vue d'ensemble</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 16 }}>
           <StatCard

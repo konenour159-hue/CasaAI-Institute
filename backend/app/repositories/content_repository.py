@@ -15,6 +15,7 @@ from app.models.enums import ContentStatus, QuizKind
 from app.models.lab import Lab, lab_modes, lab_skills
 from app.models.quiz import Quiz
 from app.models.resource import Resource, resource_courses
+from app.models.user import Goal, LearnerProfileType
 
 
 class ContentRepository:
@@ -31,6 +32,12 @@ class ContentRepository:
         if school_id:
             stmt = stmt.where(Skill.school_id == school_id)
         return list(self.db.execute(stmt).scalars())
+
+    def list_profile_types(self) -> list[LearnerProfileType]:
+        return list(self.db.execute(select(LearnerProfileType).order_by(LearnerProfileType.name)).scalars())
+
+    def list_goals(self) -> list[Goal]:
+        return list(self.db.execute(select(Goal).order_by(Goal.label)).scalars())
 
     # --- Cours -----------------------------------------------------
 
