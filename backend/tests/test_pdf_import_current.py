@@ -98,12 +98,34 @@ def test_document_sans_titre_n_invente_rien():
 
 
 def test_entete_pied_et_numero_de_page_sont_filtres():
-    """ACQUIS — le filtre d'éléments répétés retire l'en-tête, le pied de page
-    et le numéro de page (ce dernier via la normalisation des chiffres)."""
+    """ACQUIS — l'en-tête et le pied de page sont reconnus par répétition
+    exacte, le numéro de page nu par sa forme (chiffres neutralisés)."""
     boilerplate = _detect_repeated_boilerplate(pages_of("headers_footers"))
-    assert "cours big data - universite" in boilerplate
-    assert "(c) # universite - tous droits reserves" in boilerplate
-    assert "#" in boilerplate  # les numéros de page nus
+    assert "cours big data - universite" in boilerplate.exact
+    assert "(c) 2024 universite - tous droits reserves" in boilerplate.exact
+    assert "#" in boilerplate.numeric  # les numéros de page nus
+
+
+def test_entete_pied_et_numero_de_page_sont_bien_retires_du_resultat():
+    """ACQUIS — vérification de bout en bout : aucune trace de l'en-tête, du
+    pied de page ni du numéro de page dans les sections produites, mais tout
+    le contenu pédagogique conservé."""
+    sections = sections_of("headers_footers")
+    full_text = " ".join(f"{t} {b}" for t, b in sections)
+
+    assert "Cours Big Data" not in full_text
+    assert "Tous droits reserves" not in full_text
+    assert "Contenu pedagogique de la page 1." in full_text
+    assert "Contenu pedagogique de la page 3." in full_text
+
+
+def test_une_ligne_du_corps_de_page_n_est_jamais_supprimee():
+    """ACQUIS — garde-fou central de la correction : la répétition seule ne
+    suffit pas à supprimer une ligne, il faut aussi qu'elle soit en marge.
+    Une phrase répétée à l'identique au milieu du corps est conservée."""
+    sections = sections_of("headers_footers")
+    body = " ".join(b for _, b in sections)
+    assert "Suite du raisonnement sur cette meme page." in body
 
 
 def test_un_paragraphe_continue_d_une_page_a_l_autre():
@@ -116,39 +138,61 @@ def test_un_paragraphe_continue_d_une_page_a_l_autre():
     assert sections[0][1] == "Debut de phrase qui se poursuit sur la page suivante."
 
 
-# --- Défauts graves : perte silencieuse de contenu ---------------------------
+# --- Régressions corrigées (anciennes pertes de contenu) ---------------------
+#
+# Ces deux cas provoquaient une perte silencieuse de contenu. Les tests ont
+# d'abord verrouillé le comportement fautif, puis ont été inversés une fois la
+# correction faite : ils protègent désormais contre un retour du bug.
 
-def test_defaut_grave_titres_numerotes_recurrents_effacent_tout_le_document():
-    """DÉFAUT (grave) — perte totale de contenu.
+def test_titres_numerotes_recurrents_ne_sont_plus_effaces():
+    """CORRIGÉ — anciennement : perte totale du document.
 
-    `_detect_repeated_boilerplate` normalise les chiffres (`\\d+ → #`) pour
-    tolérer un numéro de page variable. Effet de bord : des titres légitimes
-    qui ne diffèrent que par leur numéro (« Exercice 1 », « Exercice 2 »…)
-    deviennent identiques une fois normalisés, dépassent le seuil de
-    répétition, et sont supprimés comme du bruit — avec leur contenu.
+    La normalisation des chiffres rendait « Exercice 1 », « Exercice 2 »…
+    identiques ; leur répétition les faisait supprimer comme du bruit, avec
+    leur contenu, et l'import produisait zéro section.
 
-    Sur cette fixture, l'import produit **zéro section** : le document entier
-    disparaît sans le moindre avertissement. C'est aussi une violation de la
-    règle 6 du cahier (« ne jamais supprimer un élément sur la base d'une
-    règle unique »).
+    La suppression exige désormais trois signaux concordants (position en
+    marge, répétition, forme) — règle 6 du cahier. Un titre au milieu du
+    corps de page n'est plus candidat.
     """
     sections = sections_of("repeated_numbered_headings")
-    assert sections == [], "Comportement fautif attendu ici — à inverser une fois corrigé"
+    assert sections, "le document ne doit plus disparaître"
+
+    titles = [t for t, _ in sections]
+    assert titles == ["Exercice 1", "Exercice 2", "Exercice 3"]
+
+    full_text = " ".join(f"{t} {b}" for t, b in sections)
+    for n in (1, 2, 3):
+        assert f"Enonce numero {n} a traiter en autonomie." in full_text
+    # L'en-tête, lui, reste bien filtré.
+    assert "Support de cours" not in full_text
 
 
-def test_defaut_grave_items_de_liste_numerotee_disparaissent():
-    """DÉFAUT (grave) — perte de contenu.
+def test_items_de_liste_numerotee_sont_conserves():
+    """CORRIGÉ — anciennement : perte du contenu des listes.
 
-    « 1. Collecter les donnees » satisfait la regex de titre numéroté au même
-    titre que « 1. Introduction ». Chaque item devient donc une section sans
-    corps, et les sections vides sont écartées en fin de traitement : les
-    étapes de la procédure sont purement et simplement absentes du résultat.
+    « 1. Collecter les donnees » satisfaisait la regex de titre numéroté :
+    chaque item devenait une section sans corps, et les sections vides étant
+    écartées en fin de traitement, les étapes disparaissaient.
+
+    Elles sont désormais reconnues comme une liste (numérotation contiguë et
+    croissante) et conservées comme du contenu.
     """
     sections = sections_of("lists")
     body = " ".join(b for _, b in sections)
-    assert "Collecter les donnees" not in body
-    assert "Entrainer le modele" not in body
-    assert "Evaluer les resultats" not in body
+    assert "1. Collecter les donnees" in body
+    assert "2. Entrainer le modele" in body
+    assert "3. Evaluer les resultats" in body
+    # Et elles ne sont pas devenues des titres.
+    assert [t for t, _ in sections] == ["Langages de programmation"]
+
+
+def test_titres_numerotes_espaces_restent_des_titres():
+    """CORRIGÉ — contre-épreuve de la correction précédente : la détection de
+    liste ne doit pas avaler de vrais titres numérotés. « 1. » et « 2. »
+    séparés par du corps de texte restent deux sections distinctes."""
+    titles = [t for t, _ in sections_of("numbered_course")]
+    assert titles == ["1. Intelligence artificielle", "2. Machine Learning"]
 
 
 # --- Défauts connus, sans perte de contenu -----------------------------------

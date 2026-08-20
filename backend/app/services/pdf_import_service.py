@@ -104,32 +104,181 @@ def _looks_like_footnote(stripped: str) -> bool:
     return bool(_FOOTNOTE_LEAD_RE.match(stripped) or _URL_HINT_RE.search(stripped))
 
 
-def _detect_repeated_boilerplate(pages: list[str], *, min_page_fraction: float = 0.25, min_occurrences: int = 3) -> set[str]:
-    """En-têtes/pieds de page répétés sur (presque) chaque page — ex: le titre
-    du document réimprimé en haut de chaque page. Sans ce filtre, une ligne
-    de ce type est détectée comme un nouveau titre à *chaque* occurrence et
-    fragmente le document en dizaines de sections vides (vérifié
-    empiriquement : jusqu'à 30% des sections d'un import réel). Normalisée
-    (espaces/casse, chiffres neutralisés) pour tolérer un numéro de page
-    variable dans une ligne par ailleurs identique."""
-    counts: Counter[str] = Counter()
+# Formats de numéro de page (§10 du cahier technique) : « 12 », « - 12 - »,
+# « Page 4 », « p. 4 », « 4 / 20 », « 4 sur 20 ». Sert à autoriser la
+# neutralisation des chiffres *uniquement* sur ces lignes-là — voir
+# _detect_repeated_boilerplate pour la raison.
+_PAGE_NUMBER_RE = re.compile(
+    r"^\d{1,4}$"
+    r"|^[-–—]\s*\d{1,4}\s*[-–—]$"
+    r"|^p(?:age)?\.?\s*\d{1,4}\b"
+    r"|^\d{1,4}\s*(?:/|sur|of|\|)\s*\d{1,4}$",
+    re.IGNORECASE,
+)
+
+# Nombre de lignes considérées comme « marge » en haut et en bas de page.
+# Un en-tête ou un pied de page y vit ; un titre de section, non.
+_MARGIN_BAND = 2
+
+
+def _looks_like_page_number(stripped: str) -> bool:
+    return bool(_PAGE_NUMBER_RE.match(stripped))
+
+
+def _norm_exact(line: str) -> str:
+    """Normalisation conservatrice : espaces et casse seulement. Les chiffres
+    sont préservés, ce qui distingue « Exercice 1 » de « Exercice 2 »."""
+    return re.sub(r"\s+", " ", line.strip()).strip().lower()
+
+
+def _norm_digits(line: str) -> str:
+    """Normalisation agressive : les chiffres deviennent « # ». Réservée aux
+    lignes qui ont déjà la forme d'un numéro de page."""
+    return re.sub(r"\d+", "#", _norm_exact(line))
+
+
+def _margin_positions(count: int) -> set[int]:
+    """Positions (dans la liste des lignes non vides d'une page) considérées
+    comme marge haute ou basse. La bande est réduite à 1 sur les pages très
+    courtes, où une bande de 2 en haut *et* en bas couvrirait la page
+    entière et exposerait tout le contenu au filtre."""
+    if count <= 0:
+        return set()
+    band = _MARGIN_BAND if count > 4 else 1
+    return set(range(min(band, count))) | set(range(max(0, count - band), count))
+
+
+class _Boilerplate:
+    """Décision multi-critères de suppression d'une ligne (règle 6 du cahier :
+    « ne jamais supprimer un élément uniquement sur la base d'une règle
+    unique »). Trois signaux sont combinés : la position dans la page, la
+    répétition d'une page à l'autre, et la forme de la ligne.
+
+    Historique de ce choix : la version précédente neutralisait les chiffres
+    de *toutes* les lignes avant de compter les répétitions. Des titres
+    légitimes ne différant que par leur numéro (« Exercice 1 », « Exercice
+    2 »…) devenaient alors identiques, franchissaient le seuil, et étaient
+    supprimés avec tout leur contenu — un document entier pouvait disparaître
+    sans le moindre avertissement (cf. tests/test_pdf_import_current.py).
+
+    La neutralisation des chiffres est donc désormais réservée aux lignes
+    ayant déjà la forme d'un numéro de page, et toute suppression exige en
+    plus que la ligne se trouve dans une marge.
+
+    Contrepartie assumée : un en-tête dont seul un numéro varie au milieu
+    d'un texte plus long (« Cours Big Data — page 4 ») n'est plus filtré. Le
+    rattraper demanderait la position réelle et la taille de police, non
+    disponibles à cette étape ; c'est prévu à l'étape « en-têtes/pieds » de
+    la restructuration, avec ces signaux en appui.
+    """
+
+    def __init__(self, exact: set[str], numeric: set[str]):
+        self.exact = exact
+        self.numeric = numeric
+
+    def matches(self, line: str, *, in_margin: bool) -> bool:
+        if not in_margin:
+            return False
+        if _norm_exact(line) in self.exact:
+            return True
+        return _looks_like_page_number(line) and _norm_digits(line) in self.numeric
+
+
+def _page_lines(page_text: str) -> list[str]:
+    return [raw.strip() for raw in page_text.rstrip().split("\n")]
+
+
+def _detect_repeated_boilerplate(
+    pages: list[str], *, min_page_fraction: float = 0.25, min_occurrences: int = 3
+) -> _Boilerplate:
+    """En-têtes/pieds de page répétés — ex: le titre du document réimprimé en
+    haut de chaque page. Sans ce filtre, une ligne de ce type est détectée
+    comme un nouveau titre à *chaque* occurrence et fragmente le document en
+    dizaines de sections vides (vérifié empiriquement : jusqu'à 30% des
+    sections d'un import réel).
+
+    Seules les lignes situées dans une marge sont comptabilisées : une ligne
+    du corps de page n'est jamais candidate, quelle que soit sa répétition.
+    """
+    exact_counts: Counter[str] = Counter()
+    numeric_counts: Counter[str] = Counter()
+
     for page_text in pages:
-        seen_this_page: set[str] = set()
-        for raw_line in page_text.split("\n"):
-            line = raw_line.strip()
-            if not line or len(line) > 120:
+        non_empty = [line for line in _page_lines(page_text) if line]
+        margins = _margin_positions(len(non_empty))
+        seen_exact: set[str] = set()
+        seen_numeric: set[str] = set()
+
+        for position, line in enumerate(non_empty):
+            if position not in margins or len(line) > 120:
                 continue
-            norm = re.sub(r"\d+", "#", re.sub(r"\s+", " ", line)).strip().lower()
-            if norm and norm not in seen_this_page:
-                counts[norm] += 1
-                seen_this_page.add(norm)
+            exact = _norm_exact(line)
+            if exact and exact not in seen_exact:
+                exact_counts[exact] += 1
+                seen_exact.add(exact)
+            if _looks_like_page_number(line):
+                numeric = _norm_digits(line)
+                if numeric and numeric not in seen_numeric:
+                    numeric_counts[numeric] += 1
+                    seen_numeric.add(numeric)
 
     threshold = max(min_occurrences, int(len(pages) * min_page_fraction))
-    return {norm for norm, c in counts.items() if c >= threshold}
+    return _Boilerplate(
+        exact={norm for norm, c in exact_counts.items() if c >= threshold},
+        numeric={norm for norm, c in numeric_counts.items() if c >= threshold},
+    )
 
 
-def _normalize_for_boilerplate_lookup(line: str) -> str:
-    return re.sub(r"\d+", "#", re.sub(r"\s+", " ", line.strip())).strip().lower()
+# Item de liste ordonnée à un seul niveau : « 1. », « 2) ». Volontairement
+# plus strict que _NUMBERED_HEADING_RE (pas de « 1.2 »), car un titre
+# hiérarchique numéroté n'est jamais un item de liste.
+_ORDERED_LIST_ITEM_RE = re.compile(r"^(\d{1,3})[.)]\s+\S")
+
+
+def _ordered_list_number(line: str) -> int | None:
+    match = _ORDERED_LIST_ITEM_RE.match(line)
+    return int(match.group(1)) if match else None
+
+
+def _detect_ordered_list_lines(lines: list[str]) -> set[int]:
+    """Indices des lignes appartenant à une liste numérotée.
+
+    « 1. Collecter les données » satisfait la regex de titre numéroté
+    exactement comme « 1. Introduction » : sans distinction, chaque item
+    devenait une section sans corps, et les sections vides étant écartées en
+    fin de traitement, le contenu de la liste disparaissait purement et
+    simplement (cf. tests/test_pdf_import_current.py).
+
+    Le discriminant retenu est la *contiguïté* : des items de liste se
+    suivent immédiatement avec une numérotation qui s'incrémente, alors que
+    deux titres de section sont séparés par du corps de texte. Deux items
+    consécutifs suffisent à trancher.
+    """
+    numbered = [(index, line) for index, line in enumerate(lines) if line]
+    list_indices: set[int] = set()
+
+    cursor = 0
+    while cursor < len(numbered):
+        start_number = _ordered_list_number(numbered[cursor][1])
+        if start_number is None:
+            cursor += 1
+            continue
+
+        run = [numbered[cursor][0]]
+        expected = start_number + 1
+        lookahead = cursor + 1
+        while lookahead < len(numbered) and _ordered_list_number(numbered[lookahead][1]) == expected:
+            run.append(numbered[lookahead][0])
+            expected += 1
+            lookahead += 1
+
+        if len(run) >= 2:
+            list_indices.update(run)
+            cursor = lookahead
+        else:
+            cursor += 1
+
+    return list_indices
 
 
 def _is_probable_heading(line: str, *, is_first_line_of_page: bool, prev_line_blank: bool) -> bool:
@@ -188,21 +337,43 @@ def _chunk_pages_into_sections(pages: list[str]) -> list[tuple[str, str]]:
         # ligne vide artificielle exactement à la frontière de page — et
         # couperait un paragraphe qui continue sur la page suivante (le bug
         # que ce découpage cherche justement à corriger).
-        for i, raw_line in enumerate(page_text.rstrip().split("\n")):
-            line = raw_line.strip()
+        page_lines = _page_lines(page_text)
 
+        # Positions de marge, exprimées en indices de ligne brute pour être
+        # comparables à l'indice de boucle ci-dessous.
+        non_empty_indices = [i for i, line in enumerate(page_lines) if line]
+        margin_indices = {
+            non_empty_indices[position] for position in _margin_positions(len(non_empty_indices))
+        }
+        list_indices = _detect_ordered_list_lines(page_lines)
+
+        # « Première ligne de la page » au sens de la première ligne
+        # réellement visible, une fois l'en-tête retiré — et non l'indice 0
+        # brut. Sur un document doté d'un en-tête, l'indice 0 est justement
+        # l'en-tête supprimé : le vrai premier titre de la page perdait alors
+        # ce signal et n'était plus détecté (constaté en corrigeant la
+        # suppression abusive d'en-têtes).
+        seen_visible_line = False
+
+        for i, line in enumerate(page_lines):
             if not line:
                 flush_paragraph()
                 prev_line_blank = True
                 continue
 
-            if _normalize_for_boilerplate_lookup(line) in boilerplate:
+            if boilerplate.matches(line, in_margin=(i in margin_indices)):
                 # En-tête/pied de page répété : complètement ignoré, ni titre
                 # ni contenu — ne modifie pas prev_line_blank (une ligne
                 # invisible n'isole pas visuellement ce qui suit).
                 continue
 
-            if _is_probable_heading(line, is_first_line_of_page=(i == 0), prev_line_blank=prev_line_blank):
+            is_first_visible = not seen_visible_line
+            seen_visible_line = True
+
+            # Un item de liste numérotée reste du contenu, jamais un titre.
+            if i not in list_indices and _is_probable_heading(
+                line, is_first_line_of_page=is_first_visible, prev_line_blank=prev_line_blank
+            ):
                 flush_paragraph()
                 sections.append((line, []))
                 prev_line_blank = False
