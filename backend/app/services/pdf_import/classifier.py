@@ -70,6 +70,26 @@ _STRUCTURAL_WORDS = {
 _SENTENCE_END_RE = re.compile(r"[.!?…:;]$")
 _MAX_HEADING_LENGTH = 120
 
+# Mots qui ne peuvent pas terminer un titre. Un titre est un groupe nominal :
+# il s'achève sur un mot plein. Une ligne qui se termine par un article, une
+# préposition ou une conjonction est un fragment de phrase — typiquement une
+# annotation de figure découpée par la mise en page (« Uses a », « Compute the
+# Check if », relevés dans un ouvrage à schémas nombreux, où elles ouvraient
+# des sections fantômes emportant jusqu'à dix-huit blocs).
+#
+# Volontairement limité aux mots-outils : pronoms et adverbes en sont exclus,
+# « On n'a rien sans rien » étant un titre parfaitement valide.
+_DANGLING_WORDS = {
+    # français
+    "le", "la", "les", "un", "une", "des", "du", "de", "au", "aux",
+    "et", "ou", "mais", "donc", "car", "ni", "que", "qui", "dans", "pour",
+    "avec", "sur", "sous", "par", "chez", "vers", "sans", "entre",
+    # anglais
+    "a", "an", "the", "of", "in", "on", "at", "to", "for", "with", "from",
+    "by", "and", "or", "but", "if", "as", "into", "than", "when", "while",
+    "which",
+}
+
 # Formules (§23). Un opérateur relationnel ou mathématique est la condition
 # nécessaire : sans lui, rien ne distingue une formule d'une phrase, et le
 # cahier interdit de deviner (règle 8).
@@ -136,6 +156,12 @@ def _looks_like_formula(paragraph: Paragraph, text: str) -> float:
     return min(0.9, 0.6 + (_FORMULA_MAX_LETTER_RATIO - ratio))
 
 
+def _ends_on_dangling_word(text: str) -> bool:
+    """Vrai si la ligne s'achève sur un mot qui ne peut pas clore un titre."""
+    words = re.findall(r"[A-Za-zÀ-ÿ']+", text)
+    return bool(words) and words[-1].lower() in _DANGLING_WORDS
+
+
 def _structural_word_hit(text: str) -> bool:
     first = re.split(r"[\s:,.]+", text.strip().lower(), maxsplit=1)
     return bool(first) and first[0] in _STRUCTURAL_WORDS
@@ -196,6 +222,13 @@ def _heading_score(paragraph: Paragraph, body_size: float) -> tuple[int, list[st
     if len(paragraph.lines) > 3:
         score -= 15
         reasons.append("plus de trois lignes")
+
+    if _ends_on_dangling_word(text):
+        # Pénalité forte plutôt que veto : la décision reste une somme de
+        # signaux (règle 6), et rien n'est supprimé — la ligne devient un
+        # paragraphe ordinaire, son texte est conservé.
+        score -= 25
+        reasons.append("se termine sur un mot-outil : fragment de phrase")
 
     return score, reasons
 

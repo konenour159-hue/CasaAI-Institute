@@ -228,3 +228,35 @@ def test_classification_robuste_sur_toutes_les_fixtures(name):
     for result in results:
         assert result.type in (HEADING, PARAGRAPH, CODE, LIST_ITEM, TABLE_ROW, FORMULA, CAPTION, UNKNOWN)
         assert 0.0 <= result.confidence <= 1.0
+
+
+# --- Fragments de phrase pris pour des titres --------------------------------
+
+def test_ligne_finissant_sur_un_mot_outil_n_est_pas_un_titre():
+    """Relevé dans un ouvrage à schémas nombreux : des annotations de figure
+    découpées par la mise en page (« Uses a », « Compute the Check if »)
+    cochaient tous les indices — courtes, en gras, sans ponctuation finale —
+    et ouvraient des sections fantômes emportant jusqu'à dix-huit blocs.
+
+    Un titre est un groupe nominal : il ne s'achève pas sur un article, une
+    préposition ni une conjonction."""
+    pdf = build_pdf([[
+        Line("Uses a", x=400, y=700, size=9, font="bold"),
+        Line("Le corps du texte occupe la largeur de la page.", x=72, y=670, size=10),
+        Line("Compute the Check if", x=330, y=640, size=9, font="bold"),
+        Line("Une seconde phrase de corps, pour asseoir la taille de reference.", x=72, y=610, size=10),
+    ]])
+    _paragraphs, results = classified(pdf)
+    assert HEADING not in [result.type for result in results]
+
+
+def test_un_titre_finissant_sur_un_mot_plein_reste_un_titre():
+    """Le garde-fou de la règle précédente : les pronoms et les adverbes en
+    sont exclus, « On n'a rien sans rien » étant un titre valide."""
+    pdf = build_pdf([[
+        Line("On n'a rien sans rien", x=72, y=700, size=15, font="bold"),
+        Line("Le corps du texte occupe la largeur de la page.", x=72, y=670, size=10),
+        Line("Une seconde phrase de corps, pour asseoir la taille de reference.", x=72, y=650, size=10),
+    ]])
+    _paragraphs, results = classified(pdf)
+    assert results[0].type == HEADING
