@@ -19,15 +19,18 @@ from app.services.pdf_import import (
     body_font_size,
     classify,
     classify_all,
+    detect_tables,
     extract_pages,
     group_paragraphs,
 )
 from app.services.pdf_import.classifier import (
     CAPTION,
     CODE,
+    FORMULA,
     HEADING,
     LIST_ITEM,
     PARAGRAPH,
+    TABLE_ROW,
     UNKNOWN,
 )
 from tests.pdf_fixtures import ALL_FIXTURES, Line, build_pdf
@@ -36,6 +39,7 @@ from tests.pdf_fixtures import ALL_FIXTURES, Line, build_pdf
 def classified(pdf_bytes: bytes):
     pages = attach_lines(extract_pages(pdf_bytes))
     body = body_font_size(pages)
+    detect_tables(pages)
     paragraphs = group_paragraphs(pages)
     return paragraphs, classify_all(paragraphs, body)
 
@@ -222,5 +226,5 @@ def test_classification_robuste_sur_toutes_les_fixtures(name):
     paragraphs, results = classified(ALL_FIXTURES[name]())
     assert len(paragraphs) == len(results)
     for result in results:
-        assert result.type in (HEADING, PARAGRAPH, CODE, LIST_ITEM, CAPTION, UNKNOWN)
+        assert result.type in (HEADING, PARAGRAPH, CODE, LIST_ITEM, TABLE_ROW, FORMULA, CAPTION, UNKNOWN)
         assert 0.0 <= result.confidence <= 1.0

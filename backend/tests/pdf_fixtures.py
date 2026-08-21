@@ -252,13 +252,28 @@ def tables_document() -> bytes:
 
 
 def formulas_document() -> bytes:
-    """TEST 12 : formule isolée, ne doit pas devenir une phrase ordinaire."""
-    return build_pdf([_flow([
-        ("Energie", "h1", 16),
-        ("La relation entre masse et energie s'ecrit :", "p", 11),
-        ("E = mc2", "formula", 12),
-        ("Cette equation etablit une equivalence.", "p", 11),
-    ])])
+    """TEST 12 : formule affichée, ne doit pas devenir une phrase ordinaire.
+
+    Composée comme dans un vrai document : centrée et détachée du texte par
+    de l'air au-dessus et au-dessous. Une formule courant au fil de la
+    phrase, au même corps et au même fer, ne porte aucun signal — le cahier
+    interdit de la deviner (règle 8), et cette fixture ne prétend donc pas le
+    contraire.
+
+    Se termine sur un faux ami : une phrase ordinaire comportant un signe
+    « = », qui ne doit surtout pas être prise pour une formule.
+    """
+    return build_pdf([[
+        Line("Energie", x=72, y=720, size=16, font="bold"),
+        Line("La relation entre la masse et l'energie", x=72, y=690, size=11),
+        Line("d'un corps au repos est l'une des plus", x=72, y=673, size=11),
+        Line("connues de toute la physique. Elle s'ecrit :", x=72, y=656, size=11),
+        Line("E = mc²", x=250, y=620, size=12),
+        Line("Cette equation etablit une equivalence", x=72, y=584, size=11),
+        Line("entre deux grandeurs que l'on croyait", x=72, y=567, size=11),
+        Line("sans rapport l'une avec l'autre.", x=72, y=550, size=11),
+        Line("Le taux d'erreur = 5 % sur cet echantillon.", x=72, y=514, size=11),
+    ]])
 
 
 def code_document() -> bytes:

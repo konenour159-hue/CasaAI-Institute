@@ -82,6 +82,13 @@ def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, para
     typographiques valent partout ; les signaux géométriques n'ont de sens
     qu'entre deux lignes du même flux (cf. `_same_flow`).
     """
+    # Une ligne de tableau est une unité en soi : ses cellules ne doivent
+    # jamais être recollées à la ligne du dessus, sous peine de rendre le
+    # tableau indéchiffrable — c'est le défaut n° 9 du cahier. Vaut aussi à
+    # l'entrée et à la sortie du tableau.
+    if previous.table != current.table or current.table is not None:
+        return True
+
     reference = max(previous.font_size, current.font_size, 1.0)
 
     # Une police nettement différente marque un changement de nature

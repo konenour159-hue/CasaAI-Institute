@@ -72,6 +72,10 @@ class Line:
     # Sert à l'étape suivante : entre deux colonnes, les ordonnées ne sont
     # plus comparables, exactement comme entre deux pages.
     column: int = 0
+    # Index du tableau auquel la ligne appartient, renseigné par
+    # `tables.detect_tables`. Même principe que `boilerplate` : la ligne est
+    # annotée, jamais déplacée.
+    table: int | None = None
 
     @property
     def bold_ratio(self) -> float:

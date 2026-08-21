@@ -430,6 +430,7 @@ def _build_document_structure(file_bytes: bytes):
         build_report,
         build_tree,
         classify_all,
+        detect_tables,
         extract_pages,
         group_paragraphs,
         segment,
@@ -438,9 +439,13 @@ def _build_document_structure(file_bytes: bytes):
     pages = attach_lines(extract_pages(file_bytes))
     body_size = body_font_size(pages)
     margins = analyze_margins(pages, body_size)
+    # Les tableaux se lisent sur la géométrie des lignes, donc avant le
+    # regroupement en paragraphes : c'est leur annotation qui empêche ensuite
+    # de recoller les cellules entre elles.
+    tables = detect_tables(pages)
     paragraphs = group_paragraphs(pages)
     classifications = classify_all(paragraphs, body_size)
-    elements = segment(paragraphs, classifications)
+    elements = segment(paragraphs, classifications, tables)
     roots = build_tree(elements)
     report = build_report(
         pages=pages, paragraphs=paragraphs, classifications=classifications,

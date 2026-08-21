@@ -225,3 +225,22 @@ def test_pages_d_origine_conservees_sur_un_document_multipage(db_session):
     section = roots[0]
     assert section.page_start == 0
     assert section.page_end == 1
+
+
+def test_les_cellules_d_un_tableau_sont_persistees(db_session):
+    """Le §22 demande une structure, pas du texte aplati. La colonne `items`
+    est en JSONB : elle porte une liste pour une liste, un objet en-têtes /
+    lignes pour un tableau. Ce test vérifie que l'aller-retour en base
+    conserve bien la seconde forme."""
+    _school(db_session, "struct-table")
+    _course, lesson, _pages, _warning, _report = _import(
+        db_session, "struct-table", ALL_FIXTURES["tables"]()
+    )
+
+    roots = DocumentStructureRepository(db_session).get_tree(lesson.id)
+    blocs = [bloc for root in roots for bloc in root.blocks if bloc.kind == "TABLE"]
+    assert len(blocs) == 1
+    assert blocs[0].items == {
+        "headers": ["Algorithme", "Usage"],
+        "rows": [["KNN", "Classification"], ["KMeans", "Clustering"]],
+    }

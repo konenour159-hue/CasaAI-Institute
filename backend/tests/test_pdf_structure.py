@@ -18,13 +18,21 @@ from app.services.pdf_import import (
     body_font_size,
     build_tree,
     classify_all,
+    detect_tables,
     extract_pages,
     flatten,
     group_paragraphs,
     segment,
     should_start_new_block,
 )
-from app.services.pdf_import.blocks import CAPTION_BLOCK, CODE_BLOCK, LIST_BLOCK, TEXT_BLOCK
+from app.services.pdf_import.blocks import (
+    CAPTION_BLOCK,
+    CODE_BLOCK,
+    FORMULA_BLOCK,
+    LIST_BLOCK,
+    TABLE_BLOCK,
+    TEXT_BLOCK,
+)
 from app.services.pdf_import.classifier import (
     CAPTION,
     CODE,
@@ -40,9 +48,10 @@ from tests.pdf_fixtures import ALL_FIXTURES, Line, build_pdf
 def structure_of(pdf_bytes: bytes):
     pages = attach_lines(extract_pages(pdf_bytes))
     body = body_font_size(pages)
+    tables = detect_tables(pages)
     paragraphs = group_paragraphs(pages)
     results = classify_all(paragraphs, body)
-    elements = segment(paragraphs, results)
+    elements = segment(paragraphs, results, tables)
     return build_tree(elements)
 
 
@@ -274,5 +283,8 @@ def test_structure_robuste_sur_toutes_les_fixtures(name):
         assert 1 <= section.level <= 4
         assert section.id
         for block in section.blocks:
-            assert block.kind in (TEXT_BLOCK, LIST_BLOCK, CODE_BLOCK, CAPTION_BLOCK)
+            assert block.kind in (
+                    TEXT_BLOCK, LIST_BLOCK, CODE_BLOCK, CAPTION_BLOCK,
+                    TABLE_BLOCK, FORMULA_BLOCK,
+                )
             assert block.paragraphs

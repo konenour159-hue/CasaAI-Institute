@@ -31,6 +31,8 @@ HEADING = "HEADING"
 PARAGRAPH = "PARAGRAPH"
 CODE = "CODE"
 LIST_ITEM = "LIST_ITEM"
+TABLE_ROW = "TABLE_ROW"
+FORMULA = "FORMULA"
 CAPTION = "CAPTION"
 UNKNOWN = "UNKNOWN"
 
@@ -68,6 +70,20 @@ _STRUCTURAL_WORDS = {
 _SENTENCE_END_RE = re.compile(r"[.!?…:;]$")
 _MAX_HEADING_LENGTH = 120
 
+# Formules (§23). Un opérateur relationnel ou mathématique est la condition
+# nécessaire : sans lui, rien ne distingue une formule d'une phrase, et le
+# cahier interdit de deviner (règle 8).
+_MATH_RE = re.compile(r"[=≈≠≤≥±×÷∑∏∫√∈∉⊂⊃∪∩→←⇒⇔∂∇∞]|[⁰-⁹²³¹]|\^\s*\d")
+
+# Au-delà, c'est une phrase qui contient un signe « = », pas une formule. Une
+# formule est *creuse* : beaucoup de symboles et d'espaces, peu de lettres.
+# Mesuré sur des cas types : « P(B|A) = P(A|B) × P(B) / P(A) » 0,34 ;
+# « E = mc² » 0,43 ; contre « Variance = 1.00 » 0,53 — un résultat affiché
+# relevé dans un des ouvrages, que 0,55 laissait passer — et « Le taux
+# d'erreur = 5 % » 0,64.
+_FORMULA_MAX_LETTER_RATIO = 0.5
+_FORMULA_MAX_LENGTH = 80
+
 
 @dataclass
 class Classification:
@@ -98,6 +114,26 @@ def _looks_title_case(text: str) -> bool:
         return False
     capitalized = sum(1 for word in words if word[0].isupper())
     return capitalized / len(words) >= 0.6
+
+
+def _looks_like_formula(paragraph: Paragraph, text: str) -> float:
+    """Confidence qu'un paragraphe soit une formule affichée, 0 si non.
+
+    Quatre conditions concordantes (§23, règle 6) : une seule ligne, un
+    opérateur mathématique, une longueur de formule et une densité de lettres
+    basse. La phrase « le taux d'erreur = 5 % » réunit les deux premières,
+    d'où les deux autres.
+    """
+    if len(paragraph.lines) > 1 or len(text) > _FORMULA_MAX_LENGTH:
+        return 0.0
+    if not _MATH_RE.search(text):
+        return 0.0
+    letters = sum(1 for char in text if char.isalpha())
+    ratio = letters / len(text)
+    if ratio >= _FORMULA_MAX_LETTER_RATIO:
+        return 0.0
+    # Plus la ligne est creuse, plus la lecture « formule » s'impose.
+    return min(0.9, 0.6 + (_FORMULA_MAX_LETTER_RATIO - ratio))
 
 
 def _structural_word_hit(text: str) -> bool:
@@ -175,6 +211,13 @@ def classify(paragraph: Paragraph, body_size: float) -> Classification:
     if not text:
         return Classification(UNKNOWN, 0.0, reasons=["texte vide"])
 
+    # Ligne de tableau : établie par la géométrie sur plusieurs lignes de
+    # suite (§22), un raisonnement bien plus solide que tout ce qui peut se
+    # lire sur le texte seul. Sans cela, « KNN Classification » ou
+    # « 1 row in set (0.00 sec) » repartent en titres.
+    if paragraph.lines and paragraph.lines[0].table is not None:
+        return Classification(TABLE_ROW, 0.9, reasons=["ligne d'un tableau détecté"])
+
     # Code : signal le plus fiable de tous, validé sur les ouvrages réels
     # (103 et 148 lignes détectées dans les deux livres techniques, aucune
     # dans l'ouvrage non technique).
@@ -195,6 +238,15 @@ def classify(paragraph: Paragraph, body_size: float) -> Classification:
 
     if BULLET_RE.match(text):
         return Classification(LIST_ITEM, 0.9, reasons=["puce en début de ligne"])
+
+    # Formule : à trancher avant le score de titre, qu'une formule affichée
+    # satisfait presque toujours — courte, sans ponctuation finale, isolée.
+    formula_confidence = _looks_like_formula(paragraph, text)
+    if formula_confidence:
+        return Classification(
+            FORMULA, formula_confidence,
+            reasons=["opérateur mathématique", "ligne courte et peu alphabétique"],
+        )
 
     score, reasons = _heading_score(paragraph, body_size)
 
