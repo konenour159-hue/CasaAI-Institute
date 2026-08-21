@@ -38,6 +38,10 @@ _FONT_CHANGE_TOLERANCE = 0.20
 # fraction de la taille de police.
 _INDENT_FACTOR = 0.8
 
+# Ponctuation qui achève une phrase. Ne sert qu'au passage d'une colonne à la
+# suivante, où aucun signal géométrique n'est exploitable.
+_SENTENCE_END = (".", "!", "?", ":", "»", "…")
+
 
 def median_leading(pages: list[Page]) -> float:
     """Interligne médian du document, en points.
@@ -95,6 +99,20 @@ def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, para
     # amorces en gras (« Note : … ») qui font bien partie du paragraphe.
     if (current.bold_ratio > 0.6) != (previous.bold_ratio > 0.6):
         return True
+
+    # Changement de colonne : les deux signaux qui restent — écart vertical et
+    # retrait — reposent sur des coordonnées qui ne sont plus comparables. Le
+    # bas de la colonne de gauche et le haut de la colonne de droite sont
+    # voisins dans la lecture mais éloignés sur la page, et la colonne de
+    # droite commence bien plus à droite sans qu'il s'agisse d'un retrait.
+    #
+    # Reste la ponctuation, qui n'est utilisable qu'ici : en cours de colonne
+    # une phrase s'achève souvent en milieu de paragraphe, mais une colonne
+    # qui se *termine* sur une phrase achevée termine presque toujours son
+    # paragraphe. Sans ce signal, la dernière ligne d'une colonne absorbe
+    # systématiquement la première de la suivante.
+    if previous.column >= 0 and current.column >= 0 and previous.column != current.column:
+        return previous.text.rstrip().endswith(_SENTENCE_END)
 
     # L'interligne attendu dépend de la taille des lignes concernées, pas
     # seulement de la médiane du document : un titre en gros corps a un

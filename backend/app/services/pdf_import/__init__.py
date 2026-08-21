@@ -9,6 +9,13 @@ segmentation) constituée et comparée à l'existant.
 """
 from app.services.pdf_import.blocks import Block, Element, segment, should_start_new_block
 from app.services.pdf_import.classifier import Classification, classify, classify_all
+from app.services.pdf_import.columns import (
+    Column,
+    ColumnLayout,
+    ReadingGroup,
+    detect_columns,
+    sort_reading_order,
+)
 from app.services.pdf_import.extractor import extract_pages
 from app.services.pdf_import.hierarchy import Section, assign_levels, build_tree, flatten
 from app.services.pdf_import.layout import attach_lines, body_font_size, group_lines
@@ -32,6 +39,11 @@ __all__ = [
     "group_lines",
     "attach_lines",
     "body_font_size",
+    "Column",
+    "ColumnLayout",
+    "ReadingGroup",
+    "detect_columns",
+    "sort_reading_order",
     "normalize_text",
     "join_lines",
     "group_paragraphs",

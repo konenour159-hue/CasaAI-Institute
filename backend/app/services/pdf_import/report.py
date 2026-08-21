@@ -64,6 +64,7 @@ class QualityReport:
     code_blocks: int = 0
     captions: int = 0
     boilerplate_removed: int = 0
+    multi_column_pages: int = 0
     average_confidence: float = 0.0
     document_type: str = TEXT_DOCUMENT
     text_extraction_confidence: float = 1.0
@@ -85,6 +86,7 @@ class QualityReport:
             "code_blocks": self.code_blocks,
             "captions": self.captions,
             "boilerplate_removed": self.boilerplate_removed,
+            "multi_column_pages": self.multi_column_pages,
             "average_confidence": round(self.average_confidence, 3),
             "document_type": self.document_type,
             "text_extraction_confidence": round(self.text_extraction_confidence, 3),
@@ -119,6 +121,7 @@ def build_report(
     """Assemble le rapport à partir des artefacts de la chaîne."""
     report = QualityReport(pages=len(pages), paragraphs=len(paragraphs))
     report.text_extraction_confidence = _extraction_confidence(pages)
+    report.multi_column_pages = sum(1 for page in pages if page.column_count > 1)
 
     if margins is not None:
         report.boilerplate_removed = margins.total
@@ -176,6 +179,17 @@ def build_report(
                 page=block.page_start if block.page_start >= 0 else None,
             ))
 
+    # Le réordonnancement en colonnes change l'ordre du texte : c'est la
+    # décision du moteur qui a le plus d'effet sur le résultat, et un tableau
+    # à deux colonnes peut encore être pris pour une mise en colonnes. À
+    # signaler, donc, même quand tout s'est bien passé.
+    if report.multi_column_pages:
+        report.anomalies.append(Anomaly(
+            "MULTI_COLUMN",
+            f"{report.multi_column_pages} page(s) lue(s) en colonnes : le texte a été "
+            "réordonné colonne par colonne. À vérifier si le document contient des tableaux.",
+        ))
+
     empty_pages = sum(1 for page in pages if not page.lines)
     if empty_pages:
         report.anomalies.append(Anomaly(
@@ -198,6 +212,7 @@ def build_report(
 def log_report(report: QualityReport, *, filename: str) -> None:
     """Journal structuré des étapes (§44)."""
     logger.info("[PDF] %s : %d pages extraites", filename, report.pages)
+    logger.info("[COLUMNS] %d page(s) lue(s) en colonnes", report.multi_column_pages)
     logger.info("[MARGINS] %d éléments d'en-tête/pied écartés", report.boilerplate_removed)
     logger.info("[PARAGRAPH] %d paragraphes reconstruits", report.paragraphs)
     logger.info("[HEADING] %d titres détectés", report.headings)
