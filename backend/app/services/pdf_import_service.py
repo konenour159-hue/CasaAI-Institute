@@ -42,6 +42,7 @@ volontairement hors périmètre ici.
 from __future__ import annotations
 
 import io
+import logging
 import re
 from collections import Counter
 from pathlib import Path
@@ -52,8 +53,12 @@ from sqlalchemy.orm import Session
 from app.models.content import Course, Lesson
 from app.models.enums import ContentStatus
 from app.repositories.admin_content_repository import AdminContentRepository
+from app.repositories.document_structure_repository import DocumentStructureRepository
 from app.schemas.admin import AdminCourseIn, AdminLessonIn, AdminLessonSectionIn
 from app.services.admin_content_service import ValidationError
+
+
+logger = logging.getLogger("casa.pdf_import")
 
 
 class PdfExtractionError(Exception):
@@ -405,6 +410,37 @@ def _chunk_pages_into_sections(pages: list[str]) -> list[tuple[str, str]]:
     return result
 
 
+def _build_document_structure(file_bytes: bytes):
+    """Reconstruit l'arbre documentaire avec le nouveau moteur.
+
+    Exécuté **en plus** du découpage historique, pas à sa place : les sections
+    plates de la leçon restent produites à l'identique, donc l'affichage
+    actuel ne change pas (§48, critère 18). L'arbre est stocké à côté, ce qui
+    permet de comparer les deux sorties sur de vrais imports avant d'envisager
+    la bascule.
+
+    Toute erreur est absorbée : le nouveau moteur ne doit en aucun cas faire
+    échouer un import qui réussissait auparavant.
+    """
+    from app.services.pdf_import import (
+        analyze_margins,
+        attach_lines,
+        body_font_size,
+        build_tree,
+        classify_all,
+        extract_pages,
+        group_paragraphs,
+        segment,
+    )
+
+    pages = attach_lines(extract_pages(file_bytes))
+    body_size = body_font_size(pages)
+    analyze_margins(pages, body_size)
+    paragraphs = group_paragraphs(pages)
+    classifications = classify_all(paragraphs, body_size)
+    return build_tree(segment(paragraphs, classifications))
+
+
 class PdfImportService:
     def __init__(self, db: Session):
         self.db = db
@@ -452,6 +488,15 @@ class PdfImportService:
             course_id=course.id, title=title, status=ContentStatus.DRAFT,
             summary=summary, position=0, sections=sections,
         ))
+
+        # Structure hiérarchique, écrite en parallèle des sections plates.
+        # Un échec ici ne doit pas perdre l'import : le contenu est déjà
+        # complet dans la leçon, l'arbre n'est qu'un enrichissement.
+        try:
+            roots = _build_document_structure(file_bytes)
+            DocumentStructureRepository(self.db).replace_for_lesson(lesson.id, roots)
+        except Exception:
+            logger.exception("Reconstruction de la structure documentaire impossible pour %s", filename)
 
         self.db.commit()
         self.db.refresh(course)
