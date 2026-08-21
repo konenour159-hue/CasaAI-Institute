@@ -184,6 +184,8 @@ export interface LessonDetail {
   sections: LessonSection[];
   depth_levels: LessonDepthLevel[];
   validation_quiz_id: string | null;
+  /** Vrai si la leçon vient d'un import PDF et dispose d'un arbre documentaire. */
+  has_document: boolean;
 }
 
 export interface UserLessonProgress {
@@ -543,6 +545,32 @@ export interface AdminQuizListResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+/** Structure documentaire d'une leçon issue d'un import PDF (§16). */
+export interface DocumentBlock {
+  kind: "TEXT" | "LIST" | "CODE" | "TABLE" | "FORMULA" | "CAPTION" | string;
+  text: string;
+  items: string[] | { headers: string[] | null; rows: string[][] } | null;
+  confidence: number;
+  page_start: number | null;
+  page_end: number | null;
+}
+
+export interface DocumentSection {
+  title: string;
+  level: number;
+  confidence: number;
+  page_start: number | null;
+  page_end: number | null;
+  blocks: DocumentBlock[];
+  children: DocumentSection[];
+}
+
+export interface LessonDocument {
+  source_file: string;
+  page_count: number;
+  sections: DocumentSection[];
 }
 
 export interface PdfImportResult {

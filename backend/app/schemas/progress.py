@@ -45,6 +45,42 @@ class LessonDetailOut(BaseModel):
     sections: list[LessonSectionOut] = []
     depth_levels: list[LessonDepthLevelOut] = []
     validation_quiz_id: str | None = None
+    has_document: bool = False
+    """Vrai si la leçon est issue d'un import PDF et dispose donc d'une
+    structure documentaire reconstruite. Les leçons écrites à la main n'en
+    ont pas : un booléen évite au client d'appeler pour rien."""
+
+
+# --- Structure documentaire d'une leçon importée ----------------------------
+# Le modèle plat rend le corps d'une section en un seul bloc de texte : listes,
+# code, tableaux et formules y perdent leur nature. Ces schémas exposent
+# l'arbre reconstruit à l'import, où chaque bloc a gardé la sienne.
+
+class DocumentBlockOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    kind: str
+    text: str
+    items: list | dict | None = None
+    confidence: float
+    page_start: int | None = None
+    page_end: int | None = None
+
+
+class DocumentSectionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    title: str
+    level: int
+    confidence: float
+    page_start: int | None = None
+    page_end: int | None = None
+    blocks: list[DocumentBlockOut] = []
+    children: list["DocumentSectionOut"] = []
+
+
+class LessonDocumentOut(BaseModel):
+    source_file: str
+    page_count: int
+    sections: list[DocumentSectionOut] = []
 
 
 class LessonCompleteResponse(BaseModel):

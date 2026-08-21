@@ -74,7 +74,8 @@ def _same_flow(previous: Line, current: Line) -> bool:
     return previous.column == current.column
 
 
-def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, paragraph_left: float) -> bool:
+def _starts_new_paragraph(previous: Line, current: Line, *, leading: float,
+                          paragraph_left: float, in_list_item: bool = False) -> bool:
     """Décide si `current` ouvre un nouveau paragraphe.
 
     Plusieurs signaux, jamais un seul (règle 6 du cahier) — et chacun
@@ -146,6 +147,17 @@ def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, para
     if current.x > paragraph_left + reference * _INDENT_FACTOR:
         return True
 
+    # Sortie de liste : les items sont indentés, la prose qui suit la liste ne
+    # l'est plus. Une ligne qui repart nettement à gauche referme donc l'item
+    # en cours — sans quoi le dernier item absorbe la phrase suivante dès que
+    # l'écart vertical passe de peu sous le seuil.
+    #
+    # Restreint aux items de liste, et non étendu à tout paragraphe : appliqué
+    # partout, ce même signal découpait 27 % de paragraphes en plus sur les
+    # ouvrages de référence et faisait disparaître une liste.
+    if in_list_item and current.x < paragraph_left - reference * _INDENT_FACTOR:
+        return True
+
     return False
 
 
@@ -168,7 +180,10 @@ def group_paragraphs(pages: list[Page]) -> list[Paragraph]:
     paragraph_left = ordered[0].x
 
     for line in ordered[1:]:
-        if _starts_new_paragraph(current[-1], line, leading=leading, paragraph_left=paragraph_left):
+        if _starts_new_paragraph(
+            current[-1], line, leading=leading, paragraph_left=paragraph_left,
+            in_list_item=looks_like_list_item(current[0].text),
+        ):
             paragraphs.append(_build_paragraph(current))
             current = [line]
             paragraph_left = line.x
@@ -181,7 +196,12 @@ def group_paragraphs(pages: list[Page]) -> list[Paragraph]:
 
 
 def _build_paragraph(lines: list[Line]) -> Paragraph:
-    return Paragraph(
-        text=join_lines([line.text for line in lines]),
-        lines=list(lines),
-    )
+    # Dans du code, le retour à la ligne fait partie du contenu : le recoller
+    # par des espaces rendrait le bloc illisible, et la reconstruction des
+    # mots coupés y ferait plus de mal que de bien (« read_csv » n'est pas une
+    # césure). La prose, elle, se recolle en un texte continu.
+    if lines and sum(1 for line in lines if line.mono_ratio > 0.6) > len(lines) / 2:
+        text = "\n".join(line.text for line in lines)
+    else:
+        text = join_lines([line.text for line in lines])
+    return Paragraph(text=text, lines=list(lines))

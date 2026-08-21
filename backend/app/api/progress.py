@@ -13,11 +13,15 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.progress_repository import ProgressRepository
+from app.repositories.document_structure_repository import DocumentStructureRepository
 from app.schemas.progress import (
+    DocumentBlockOut,
+    DocumentSectionOut,
     LabResultOut,
     LabSubmitRequest,
     LessonCompleteResponse,
     LessonDetailOut,
+    LessonDocumentOut,
     QuizAttemptHistoryOut,
     QuizAttemptRequest,
     QuizAttemptResultOut,
@@ -52,6 +56,46 @@ def get_lesson(
         objectives=[o.label for o in lesson.objectives],
         sections=lesson.sections, depth_levels=lesson.depth_levels,
         validation_quiz_id=repo.get_validation_quiz_id(lesson_id),
+        has_document=DocumentStructureRepository(db).get_document_for_lesson(lesson_id) is not None,
+    )
+
+
+def _document_section(section) -> DocumentSectionOut:
+    return DocumentSectionOut(
+        title=section.title, level=section.level, confidence=section.confidence,
+        page_start=section.page_start, page_end=section.page_end,
+        blocks=[DocumentBlockOut.model_validate(block) for block in section.blocks],
+        children=[_document_section(child) for child in section.children],
+    )
+
+
+@router.get("/lessons/{lesson_id}/document", response_model=LessonDocumentOut)
+def get_lesson_document(
+    lesson_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> LessonDocumentOut:
+    """Structure documentaire d'une leçon issue d'un import PDF.
+
+    Servie à part du détail de leçon plutôt qu'incluse dedans : les leçons
+    écrites à la main n'en ont aucune, et l'arbre d'un ouvrage entier n'a rien
+    à faire dans une réponse que tout le monde demande. `has_document` sur le
+    détail dit s'il vaut la peine d'appeler.
+    """
+    if ProgressRepository(db).get_lesson_detail(lesson_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leçon introuvable.")
+
+    structure = DocumentStructureRepository(db)
+    document = structure.get_document_for_lesson(lesson_id)
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cette leçon n'est pas issue d'un import : elle n'a pas de structure documentaire.",
+        )
+
+    return LessonDocumentOut(
+        source_file=document.source_file, page_count=document.page_count,
+        sections=[_document_section(root) for root in structure.get_tree(document.id)],
     )
 
 

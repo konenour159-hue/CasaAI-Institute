@@ -2,6 +2,7 @@ import { api } from "./apiClient";
 import type {
   LabResult,
   LessonDetail,
+  LessonDocument,
   Quiz,
   QuizAttemptHistoryItem,
   QuizAttemptResult,
@@ -12,6 +13,7 @@ import type {
 
 export const progressService = {
   getLesson: (id: string) => api.get<LessonDetail>(`/api/lessons/${id}`, true),
+  getLessonDocument: (id: string) => api.get<LessonDocument>(`/api/lessons/${id}/document`, true),
   completeLesson: (id: string) =>
     api.post<{ lesson_id: string; status: string; progress_pct: number }>(
       `/api/lessons/${id}/complete`,
