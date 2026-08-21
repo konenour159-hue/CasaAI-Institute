@@ -163,8 +163,11 @@ class AdminLessonListResponse(BaseModel):
 # --- Import PDF -----------------------------------------------------------
 
 class PdfImportResponse(BaseModel):
-    course_id: str
-    lesson_id: str
+    document_id: uuid.UUID
+    """Le document versé au corpus. Toujours présent, contrairement au cours."""
+    # None pour un document de référence, importé sans création de cours.
+    course_id: str | None = None
+    lesson_id: str | None = None
     title: str
     pages_extracted: int
     warning: str | None = None

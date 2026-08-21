@@ -62,10 +62,11 @@ export const adminService = {
     return api.postForm<PdfPreviewResult>("/api/admin/courses/preview-pdf", form);
   },
 
-  importPdf: (file: File, schoolId: string) => {
+  importPdf: (file: File, schoolId: string, createCourse = true) => {
     const form = new FormData();
     form.append("school_id", schoolId);
     form.append("file", file);
+    form.append("create_course", String(createCourse));
     return api.postForm<PdfImportResult>("/api/admin/courses/import-pdf", form);
   },
 

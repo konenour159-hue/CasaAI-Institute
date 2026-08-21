@@ -546,8 +546,10 @@ export interface AdminQuizListResponse {
 }
 
 export interface PdfImportResult {
-  course_id: string;
-  lesson_id: string;
+  document_id: string;
+  /** null pour un document de référence, importé sans création de cours. */
+  course_id: string | null;
+  lesson_id: string | null;
   title: string;
   pages_extracted: number;
   warning: string | null;

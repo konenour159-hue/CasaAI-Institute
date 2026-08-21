@@ -145,9 +145,9 @@ def test_l_import_remonte_le_rapport(db_session):
     db_session.add(School(id="report-1", name="École", short_name="R", color="#000000"))
     db_session.commit()
 
-    _course, _lesson, _pages, _warning, report = PdfImportService(db_session).import_pdf(
+    report = PdfImportService(db_session).import_pdf(
         file_bytes=ALL_FIXTURES["nested_headings"](), filename="cours.pdf", school_id="report-1",
-    )
+    ).report
     assert report is not None
     assert report.pages == 1
     assert report.headings >= 3
@@ -164,8 +164,8 @@ def test_le_rapport_vaut_none_si_la_reconstruction_echoue(db_session, monkeypatc
 
     monkeypatch.setattr("app.services.pdf_import_service._build_document_structure", boom)
 
-    _course, lesson, _pages, _warning, report = PdfImportService(db_session).import_pdf(
+    result = PdfImportService(db_session).import_pdf(
         file_bytes=ALL_FIXTURES["simple_course"](), filename="cours.pdf", school_id="report-2",
     )
-    assert report is None
-    assert lesson.sections, "l'import aboutit malgré tout"
+    assert result.report is None
+    assert result.lesson.sections, "l'import aboutit malgré tout"

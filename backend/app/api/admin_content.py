@@ -246,9 +246,15 @@ async def admin_preview_pdf(
 async def admin_import_pdf(
     school_id: str = Form(...),
     file: UploadFile = File(...),
+    create_course: bool = Form(default=True),
     db: Session = Depends(get_db),
     _admin: User = Depends(require_content_admin),
 ) -> PdfImportResponse:
+    """Importe un PDF.
+
+    `create_course=false` verse le document au corpus documentaire sans créer
+    de cours : la réponse ne porte alors ni `course_id` ni `lesson_id`.
+    """
     if file.content_type not in _PDF_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -257,8 +263,9 @@ async def admin_import_pdf(
 
     file_bytes = await file.read()
     try:
-        course, lesson, page_count, warning, report = PdfImportService(db).import_pdf(
-            file_bytes=file_bytes, filename=file.filename or "import.pdf", school_id=school_id,
+        result = PdfImportService(db).import_pdf(
+            file_bytes=file_bytes, filename=file.filename or "import.pdf",
+            school_id=school_id, create_course=create_course,
         )
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
@@ -266,7 +273,11 @@ async def admin_import_pdf(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
 
     return PdfImportResponse(
-        course_id=course.id, lesson_id=lesson.id, title=course.title,
-        pages_extracted=page_count, warning=warning,
-        report=report.to_dict() if report is not None else None,
+        document_id=result.document.id,
+        course_id=result.course.id if result.course is not None else None,
+        lesson_id=result.lesson.id if result.lesson is not None else None,
+        title=result.document.title,
+        pages_extracted=result.page_count,
+        warning=result.warning,
+        report=result.report.to_dict() if result.report is not None else None,
     )

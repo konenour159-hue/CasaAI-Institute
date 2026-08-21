@@ -78,13 +78,13 @@ def test_la_previsualisation_correspond_a_l_import(db_session):
     db_session.commit()
 
     _title, _pages, report, roots = _preview()
-    _course, lesson, _count, _warning, imported = PdfImportService(db_session).import_pdf(
+    result = PdfImportService(db_session).import_pdf(
         file_bytes=ALL_FIXTURES["nested_headings"](), filename="cours-de-donnees.pdf",
         school_id="preview-1",
     )
 
-    assert report == imported.to_dict()
-    persistees = DocumentStructureRepository(db_session).get_tree(lesson.id)
+    assert report == result.report.to_dict()
+    persistees = DocumentStructureRepository(db_session).get_tree(result.document.id)
     assert [root.title for root in persistees] == [root.title for root in roots]
 
 

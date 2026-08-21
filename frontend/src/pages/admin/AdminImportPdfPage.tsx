@@ -98,6 +98,7 @@ export function AdminImportPdfPage() {
   const [schools, setSchools] = useState<School[]>([]);
   const [schoolId, setSchoolId] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [createCourse, setCreateCourse] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState<PdfPreviewResult | null>(null);
@@ -137,7 +138,7 @@ export function AdminImportPdfPage() {
     setImporting(true);
     setError(null);
     try {
-      setResult(await adminService.importPdf(file, schoolId));
+      setResult(await adminService.importPdf(file, schoolId, createCourse));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Échec de l'import.");
     } finally {
@@ -185,6 +186,24 @@ export function AdminImportPdfPage() {
               onChange={(e) => chooseFile(e.target.files?.[0] ?? null)}
             />
           </div>
+
+          <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={!createCourse}
+              onChange={(e) => setCreateCourse(!e.target.checked)}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              Document de référence uniquement
+              <br />
+              <span style={{ fontSize: "0.85rem", opacity: 0.7 }}>
+                Le document rejoint le corpus documentaire sans créer de cours à relire et
+                publier. À cocher pour un ouvrage entier, qui n'a pas vocation à devenir une
+                leçon.
+              </span>
+            </span>
+          </label>
 
           {error && <p className="error-text">{error}</p>}
 
@@ -283,15 +302,22 @@ export function AdminImportPdfPage() {
                   onClick={handleImport}
                   disabled={importing || !schoolId}
                 >
-                  {importing ? "Import en cours…" : "Valider et importer"}
+                  {importing
+                    ? "Import en cours…"
+                    : createCourse
+                      ? "Valider et importer"
+                      : "Verser au corpus"}
                 </button>
                 <button type="button" className="btn btn-secondary" onClick={() => chooseFile(null)}>
                   Choisir un autre fichier
                 </button>
               </div>
               <p style={{ fontSize: "0.82rem", opacity: 0.7, marginTop: 10, marginBottom: 0 }}>
-                Rien n'a encore été enregistré. Le cours sera créé en brouillon, à relire avant
-                publication — {countBlocks(preview.sections)} bloc
+                Rien n'a encore été enregistré.{" "}
+                {createCourse
+                  ? "Le cours sera créé en brouillon, à relire avant publication"
+                  : "Aucun cours ne sera créé"}{" "}
+                — {countBlocks(preview.sections)} bloc
                 {countBlocks(preview.sections) > 1 ? "s" : ""} seront écrits.
               </p>
             </div>
@@ -306,9 +332,15 @@ export function AdminImportPdfPage() {
                 <strong style={{ color: "var(--color-text)" }}>{result.title}</strong> — {result.pages_extracted} page{result.pages_extracted > 1 ? "s" : ""} extraite{result.pages_extracted > 1 ? "s" : ""}
               </p>
               {result.warning && <p className="error-text" style={{ marginBottom: 10 }}>{result.warning}</p>}
-              <Link to={`/admin/courses/${result.course_id}`} className="btn btn-secondary">
-                Relire et publier
-              </Link>
+              {result.course_id ? (
+                <Link to={`/admin/courses/${result.course_id}`} className="btn btn-secondary">
+                  Relire et publier
+                </Link>
+              ) : (
+                <p style={{ marginBottom: 0, opacity: 0.8 }}>
+                  Versé au corpus documentaire. Aucun cours n'a été créé.
+                </p>
+              )}
             </div>
           </RevealSection>
         )}

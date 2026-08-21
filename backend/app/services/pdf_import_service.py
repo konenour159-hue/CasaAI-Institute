@@ -45,12 +45,14 @@ import io
 import logging
 import re
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
 from app.models.content import Course, Lesson
+from app.models.document import ImportedDocument
 from app.models.enums import ContentStatus
 from app.repositories.admin_content_repository import AdminContentRepository
 from app.repositories.document_structure_repository import DocumentStructureRepository
@@ -474,14 +476,39 @@ def preview_pdf(*, file_bytes: bytes, filename: str) -> tuple[str, int, dict, li
     return _title_from_filename(filename), page_count, report.to_dict(), roots
 
 
+@dataclass
+class ImportResult:
+    """Ce qu'un import a produit.
+
+    `course` et `lesson` valent None pour un document de référence : le PDF
+    alimente alors le corpus documentaire sans qu'aucun cours ne soit créé.
+    `document` est toujours renseigné — c'est la source, et elle existe dans
+    tous les cas.
+    """
+
+    document: ImportedDocument
+    page_count: int
+    course: Course | None = None
+    lesson: Lesson | None = None
+    warning: str | None = None
+    report: object | None = None
+
+
 class PdfImportService:
     def __init__(self, db: Session):
         self.db = db
         self.repo = AdminContentRepository(db)
 
     def import_pdf(
-        self, *, file_bytes: bytes, filename: str, school_id: str
-    ) -> tuple[Course, Lesson, int, str | None, object | None]:
+        self, *, file_bytes: bytes, filename: str, school_id: str, create_course: bool = True
+    ) -> ImportResult:
+        """Importe un PDF, avec ou sans création de cours.
+
+        `create_course=False` importe un document de référence : l'arbre et
+        ses blocs sont écrits, aucun cours ni leçon ne l'est. C'est ce qui
+        permet de verser un ouvrage entier au corpus sans encombrer le
+        catalogue d'un brouillon de 649 pages.
+        """
         if not self.repo.school_exists(school_id):
             raise ValidationError(f"École '{school_id}' introuvable.")
 
@@ -491,49 +518,72 @@ class PdfImportService:
             raise PdfExtractionError(f"Fichier PDF illisible : {e}") from e
 
         page_count = len(reader.pages)
-        pages_text = [(page.extract_text() or "") for page in reader.pages]
-        empty_pages = sum(1 for t in pages_text if not t.strip())
-
-        sections = [
-            AdminLessonSectionIn(title=title, body=body)
-            for title, body in _chunk_pages_into_sections(pages_text)
-        ]
-
-        warning = None
-        if empty_pages == page_count:
-            warning = (
-                "Aucun texte n'a pu être extrait — ce PDF est probablement scanné "
-                "(image sans couche de texte). Une leçon vide a été créée ; l'OCR "
-                "n'est pas encore pris en charge."
-            )
-        elif empty_pages > 0:
-            warning = f"{empty_pages} page(s) sur {page_count} sans texte extractible, ignorée(s)."
-
         title = _title_from_filename(filename)
-        summary = sections[0].body[:300] if sections else None
+        course: Course | None = None
+        lesson: Lesson | None = None
+        warning: str | None = None
 
-        course = self.repo.create_course(AdminCourseIn(
-            school_id=school_id, title=title, status=ContentStatus.DRAFT,
-            description=f"Importé automatiquement depuis {filename}.",
-        ))
+        if create_course:
+            pages_text = [(page.extract_text() or "") for page in reader.pages]
+            empty_pages = sum(1 for t in pages_text if not t.strip())
 
-        lesson = self.repo.create_lesson(AdminLessonIn(
-            course_id=course.id, title=title, status=ContentStatus.DRAFT,
-            summary=summary, position=0, sections=sections,
-        ))
+            sections = [
+                AdminLessonSectionIn(title=section_title, body=body)
+                for section_title, body in _chunk_pages_into_sections(pages_text)
+            ]
 
-        # Structure hiérarchique, écrite en parallèle des sections plates.
-        # Un échec ici ne doit pas perdre l'import : le contenu est déjà
-        # complet dans la leçon, l'arbre n'est qu'un enrichissement.
+            if empty_pages == page_count:
+                warning = (
+                    "Aucun texte n'a pu être extrait — ce PDF est probablement scanné "
+                    "(image sans couche de texte). Une leçon vide a été créée ; l'OCR "
+                    "n'est pas encore pris en charge."
+                )
+            elif empty_pages > 0:
+                warning = f"{empty_pages} page(s) sur {page_count} sans texte extractible, ignorée(s)."
+
+            course = self.repo.create_course(AdminCourseIn(
+                school_id=school_id, title=title, status=ContentStatus.DRAFT,
+                description=f"Importé automatiquement depuis {filename}.",
+            ))
+
+            lesson = self.repo.create_lesson(AdminLessonIn(
+                course_id=course.id, title=title, status=ContentStatus.DRAFT,
+                summary=sections[0].body[:300] if sections else None,
+                position=0, sections=sections,
+            ))
+
+        # Structure hiérarchique. Quand un cours a été créé, un échec ici ne
+        # doit pas perdre l'import : le contenu est déjà complet dans la
+        # leçon, l'arbre n'est qu'un enrichissement. Pour un document de
+        # référence en revanche, l'arbre *est* le résultat : son échec est
+        # celui de l'import, et il faut le dire.
         report = None
+        roots = []
         try:
             roots, report = _build_document_structure(file_bytes)
-            DocumentStructureRepository(self.db).replace_for_lesson(lesson.id, roots)
             log_report(report, filename=filename)
         except Exception:
             logger.exception("Reconstruction de la structure documentaire impossible pour %s", filename)
+            if not create_course:
+                raise PdfExtractionError(
+                    "La structure du document n'a pas pu être reconstruite : rien à verser au corpus."
+                )
+
+        structure = DocumentStructureRepository(self.db)
+        document = structure.create_document(
+            source_file=filename, title=title, page_count=page_count,
+            school_id=school_id, lesson_id=lesson.id if lesson is not None else None,
+            report=report.to_dict() if report is not None else None,
+        )
+        structure.replace_for_document(document.id, roots)
 
         self.db.commit()
-        self.db.refresh(course)
-        self.db.refresh(lesson)
-        return course, lesson, page_count, warning, report
+        self.db.refresh(document)
+        if course is not None:
+            self.db.refresh(course)
+        if lesson is not None:
+            self.db.refresh(lesson)
+        return ImportResult(
+            document=document, page_count=page_count,
+            course=course, lesson=lesson, warning=warning, report=report,
+        )
