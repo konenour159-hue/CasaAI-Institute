@@ -31,7 +31,7 @@ def _import(db_session, school_id: str, pdf: bytes, filename: str = "cours.pdf")
 
 def test_l_import_ecrit_l_arbre_documentaire(db_session):
     _school(db_session, "struct-1")
-    _course, lesson, _pages, _warning = _import(
+    _course, lesson, _pages, _warning, _report = _import(
         db_session, "struct-1", ALL_FIXTURES["nested_headings"]()
     )
 
@@ -56,7 +56,7 @@ def test_l_import_ecrit_l_arbre_documentaire(db_session):
 
 def test_les_blocs_sont_rattaches_a_leur_section(db_session):
     _school(db_session, "struct-2")
-    _course, lesson, _pages, _warning = _import(
+    _course, lesson, _pages, _warning, _report = _import(
         db_session, "struct-2", ALL_FIXTURES["nested_headings"]()
     )
 
@@ -75,7 +75,7 @@ def test_les_blocs_sont_rattaches_a_leur_section(db_session):
 def test_la_liste_conserve_ses_items(db_session):
     """§21 : une liste ne doit pas être aplatie en texte."""
     _school(db_session, "struct-3")
-    _course, lesson, _pages, _warning = _import(db_session, "struct-3", ALL_FIXTURES["lists"]())
+    _course, lesson, _pages, _warning, _report = _import(db_session, "struct-3", ALL_FIXTURES["lists"]())
 
     lists = (
         db_session.query(ContentBlock)
@@ -91,7 +91,7 @@ def test_la_liste_conserve_ses_items(db_session):
 def test_la_tracabilite_est_persistee(db_session):
     """§26 et §45 : chaque bloc doit garder sa provenance."""
     _school(db_session, "struct-4")
-    _course, lesson, _pages, _warning = _import(
+    _course, lesson, _pages, _warning, _report = _import(
         db_session, "struct-4", ALL_FIXTURES["complex_course"]()
     )
 
@@ -117,7 +117,7 @@ def test_la_tracabilite_est_persistee(db_session):
 def test_les_sections_plates_de_la_lecon_restent_produites(db_session):
     """Le cœur de l'option B : l'affichage actuel ne doit rien perdre."""
     _school(db_session, "struct-5")
-    _course, lesson, _pages, _warning = _import(
+    _course, lesson, _pages, _warning, _report = _import(
         db_session, "struct-5", ALL_FIXTURES["nested_headings"]()
     )
 
@@ -137,7 +137,7 @@ def test_un_echec_du_nouveau_moteur_ne_casse_pas_l_import(db_session, monkeypatc
 
     monkeypatch.setattr("app.services.pdf_import_service._build_document_structure", boom)
 
-    _course, lesson, pages, warning = _import(
+    _course, lesson, pages, warning, _report = _import(
         db_session, "struct-6", ALL_FIXTURES["simple_course"]()
     )
 
@@ -152,14 +152,14 @@ def test_un_echec_du_nouveau_moteur_ne_casse_pas_l_import(db_session, monkeypatc
 def test_reecrire_la_structure_remplace_l_ancienne(db_session):
     """Un réimport ne doit pas laisser d'anciennes sections orphelines."""
     _school(db_session, "struct-7")
-    _course, lesson, _pages, _warning = _import(
+    _course, lesson, _pages, _warning, _report = _import(
         db_session, "struct-7", ALL_FIXTURES["nested_headings"]()
     )
     repo = DocumentStructureRepository(db_session)
     before = db_session.query(DocumentSection).filter_by(lesson_id=lesson.id).count()
     assert before > 0
 
-    roots = _build_document_structure(ALL_FIXTURES["simple_course"]())
+    roots, _report = _build_document_structure(ALL_FIXTURES["simple_course"]())
     repo.replace_for_lesson(lesson.id, roots)
     db_session.flush()
 
@@ -171,7 +171,7 @@ def test_reecrire_la_structure_remplace_l_ancienne(db_session):
 def test_supprimer_la_lecon_emporte_sa_structure(db_session):
     """La cascade doit être effective : pas de sections ni de blocs orphelins."""
     _school(db_session, "struct-8")
-    _course, lesson, _pages, _warning = _import(
+    _course, lesson, _pages, _warning, _report = _import(
         db_session, "struct-8", ALL_FIXTURES["nested_headings"]()
     )
     lesson_id = lesson.id
@@ -193,7 +193,7 @@ def test_contrainte_de_niveau_respectee(db_session):
     """La base refuse un niveau hors de H1-H4 (§16), ce qui garantit qu'une
     erreur de reconstruction ne passe pas inaperçue."""
     _school(db_session, "struct-9")
-    _course, lesson, _pages, _warning = _import(
+    _course, lesson, _pages, _warning, _report = _import(
         db_session, "struct-9", ALL_FIXTURES["nested_headings"]()
     )
     sections = db_session.query(DocumentSection).filter_by(lesson_id=lesson.id).all()
@@ -203,7 +203,7 @@ def test_contrainte_de_niveau_respectee(db_session):
 def test_document_sans_titre_produit_une_section_d_accueil(db_session):
     """Règle 8 : ne rien inventer, mais ne rien perdre non plus."""
     _school(db_session, "struct-10")
-    _course, lesson, _pages, _warning = _import(
+    _course, lesson, _pages, _warning, _report = _import(
         db_session, "struct-10", ALL_FIXTURES["no_headings"]()
     )
     roots = DocumentStructureRepository(db_session).get_tree(lesson.id)
@@ -219,7 +219,7 @@ def test_pages_d_origine_conservees_sur_un_document_multipage(db_session):
          Line("Contenu commence sur la premiere page du document.", y=680, size=11)],
         [Line("et se poursuit sur la seconde page du document.", y=700, size=11)],
     ])
-    _course, lesson, _pages, _warning = _import(db_session, "struct-11", pdf)
+    _course, lesson, _pages, _warning, _report = _import(db_session, "struct-11", pdf)
 
     roots = DocumentStructureRepository(db_session).get_tree(lesson.id)
     section = roots[0]

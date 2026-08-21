@@ -19,6 +19,7 @@ from app.services.pdf_import.margins import (
     looks_like_page_number,
 )
 from app.services.pdf_import.models import Fragment, Line, Page, Paragraph
+from app.services.pdf_import.report import Anomaly, QualityReport, build_report, log_report
 from app.services.pdf_import.normalizer import join_lines, normalize_text
 from app.services.pdf_import.paragraphs import group_paragraphs, median_leading
 
@@ -50,4 +51,8 @@ __all__ = [
     "build_tree",
     "assign_levels",
     "flatten",
+    "build_report",
+    "log_report",
+    "QualityReport",
+    "Anomaly",
 ]

@@ -54,6 +54,7 @@ from app.models.content import Course, Lesson
 from app.models.enums import ContentStatus
 from app.repositories.admin_content_repository import AdminContentRepository
 from app.repositories.document_structure_repository import DocumentStructureRepository
+from app.services.pdf_import.report import log_report
 from app.schemas.admin import AdminCourseIn, AdminLessonIn, AdminLessonSectionIn
 from app.services.admin_content_service import ValidationError
 
@@ -426,6 +427,7 @@ def _build_document_structure(file_bytes: bytes):
         analyze_margins,
         attach_lines,
         body_font_size,
+        build_report,
         build_tree,
         classify_all,
         extract_pages,
@@ -435,10 +437,16 @@ def _build_document_structure(file_bytes: bytes):
 
     pages = attach_lines(extract_pages(file_bytes))
     body_size = body_font_size(pages)
-    analyze_margins(pages, body_size)
+    margins = analyze_margins(pages, body_size)
     paragraphs = group_paragraphs(pages)
     classifications = classify_all(paragraphs, body_size)
-    return build_tree(segment(paragraphs, classifications))
+    elements = segment(paragraphs, classifications)
+    roots = build_tree(elements)
+    report = build_report(
+        pages=pages, paragraphs=paragraphs, classifications=classifications,
+        elements=elements, roots=roots, margins=margins,
+    )
+    return roots, report
 
 
 class PdfImportService:
@@ -448,7 +456,7 @@ class PdfImportService:
 
     def import_pdf(
         self, *, file_bytes: bytes, filename: str, school_id: str
-    ) -> tuple[Course, Lesson, int, str | None]:
+    ) -> tuple[Course, Lesson, int, str | None, object | None]:
         if not self.repo.school_exists(school_id):
             raise ValidationError(f"École '{school_id}' introuvable.")
 
@@ -492,13 +500,15 @@ class PdfImportService:
         # Structure hiérarchique, écrite en parallèle des sections plates.
         # Un échec ici ne doit pas perdre l'import : le contenu est déjà
         # complet dans la leçon, l'arbre n'est qu'un enrichissement.
+        report = None
         try:
-            roots = _build_document_structure(file_bytes)
+            roots, report = _build_document_structure(file_bytes)
             DocumentStructureRepository(self.db).replace_for_lesson(lesson.id, roots)
+            log_report(report, filename=filename)
         except Exception:
             logger.exception("Reconstruction de la structure documentaire impossible pour %s", filename)
 
         self.db.commit()
         self.db.refresh(course)
         self.db.refresh(lesson)
-        return course, lesson, page_count, warning
+        return course, lesson, page_count, warning, report
