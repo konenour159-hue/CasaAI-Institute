@@ -19,6 +19,7 @@ from app.services.pdf_import import (
     classify_all,
     extract_pages,
     group_paragraphs,
+    merge_overline_headings,
     segment,
 )
 from app.services.pdf_import.report import SCANNED_DOCUMENT, TEXT_DOCUMENT
@@ -32,6 +33,7 @@ def report_of(pdf_bytes: bytes):
     margins = analyze_margins(pages, body)
     paragraphs = group_paragraphs(pages)
     classifications = classify_all(paragraphs, body)
+    paragraphs, classifications = merge_overline_headings(paragraphs, classifications)
     elements = segment(paragraphs, classifications)
     roots = build_tree(elements)
     return build_report(

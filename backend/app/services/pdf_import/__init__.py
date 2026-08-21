@@ -40,7 +40,14 @@ from app.services.pdf_import.columns import (
     sort_reading_order,
 )
 from app.services.pdf_import.extractor import extract_pages
-from app.services.pdf_import.hierarchy import Section, assign_levels, build_tree, flatten
+from app.services.pdf_import.hierarchy import (
+    Section,
+    assign_levels,
+    build_tree,
+    flatten,
+    merge_overline_headings,
+    size_bands,
+)
 from app.services.pdf_import.layout import attach_lines, body_font_size, group_lines
 from app.services.pdf_import.margins import (
     MarginReport,
@@ -104,6 +111,8 @@ __all__ = [
     "Section",
     "build_tree",
     "assign_levels",
+    "merge_overline_headings",
+    "size_bands",
     "flatten",
     "build_report",
     "log_report",

@@ -435,6 +435,7 @@ def _build_document_structure(file_bytes: bytes):
         detect_tables,
         extract_pages,
         group_paragraphs,
+        merge_overline_headings,
         segment,
     )
 
@@ -447,6 +448,9 @@ def _build_document_structure(file_bytes: bytes):
     tables = detect_tables(pages)
     paragraphs = group_paragraphs(pages)
     classifications = classify_all(paragraphs, body_size)
+    # Un surtitre et son titre forment un seul titre : à faire avant la
+    # segmentation, sinon toute la suite hérite d'un titre de trop (§16).
+    paragraphs, classifications = merge_overline_headings(paragraphs, classifications)
     elements = segment(paragraphs, classifications, tables)
     roots = build_tree(elements)
     report = build_report(

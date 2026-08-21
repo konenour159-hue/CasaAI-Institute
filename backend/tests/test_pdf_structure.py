@@ -22,6 +22,8 @@ from app.services.pdf_import import (
     extract_pages,
     flatten,
     group_paragraphs,
+    merge_overline_headings,
+    size_bands,
     segment,
     should_start_new_block,
 )
@@ -51,6 +53,7 @@ def structure_of(pdf_bytes: bytes):
     tables = detect_tables(pages)
     paragraphs = group_paragraphs(pages)
     results = classify_all(paragraphs, body)
+    paragraphs, results = merge_overline_headings(paragraphs, results)
     elements = segment(paragraphs, results, tables)
     return build_tree(elements)
 
@@ -288,3 +291,66 @@ def test_structure_robuste_sur_toutes_les_fixtures(name):
                     TABLE_BLOCK, FORMULA_BLOCK,
                 )
             assert block.paragraphs
+
+
+# --- Paliers de taille et surtitres (§16-17) ---------------------------------
+
+def test_les_tailles_proches_relevent_du_meme_palier():
+    """Classer les tailles distinctes une à une donnait, sur un ouvrage à six
+    tailles de titre, des rangs de 1 à 6 : tout ce qui passait sous la
+    quatrième s'écrasait au niveau 4. Les tailles relevées sur cet ouvrage."""
+    bands = size_bands([30.0, 15.0, 14.0, 12.0, 11.6, 8.7])
+    assert bands[30.0] == 1
+    assert bands[15.0] == bands[14.0] == 2
+    assert bands[12.0] == bands[11.6] == 3
+    assert bands[8.7] == 4
+
+
+def test_un_palier_ne_derive_pas_de_proche_en_proche():
+    """Chaque taille est comparée à celle qui ouvre le palier, non à sa
+    voisine : sinon une suite de petits écarts réunirait 15 pt et 12 pt."""
+    bands = size_bands([15.0, 14.3, 13.6, 13.0, 12.4])
+    assert bands[15.0] == bands[14.3] == 1
+    assert bands[13.6] > 1
+
+
+def test_le_surtitre_est_reuni_a_son_titre():
+    """« Unit 18 » en 12 pt au-dessus de « Using a MySQL Database » en 14 pt
+    n'est pas le parent de ce titre : c'est la même tête de chapitre en deux
+    lignes. Séparés, le plus petit devenait parent du plus grand et emportait
+    tout le chapitre suivant dans la branche précédente."""
+    pdf = build_pdf([[
+        Line("Unit 18", x=72, y=720, size=12),
+        Line("Using a MySQL Database", x=72, y=700, size=14, font="bold"),
+        Line("Cette unite presente les commandes de base du langage SQL.", x=72, y=670, size=10),
+        Line("Insertion", x=72, y=640, size=12, font="bold"),
+        Line("La commande INSERT ajoute une ligne dans une table existante.", x=72, y=620, size=10),
+    ]])
+    roots = structure_of(pdf)
+    assert [section.title for section in roots] == ["Unit 18 Using a MySQL Database"]
+    assert [child.title for child in roots[0].children] == ["Insertion"]
+
+
+def test_un_titre_suivi_d_un_titre_plus_petit_reste_un_parent():
+    """Le cas symétrique, qui ne doit surtout pas être fusionné : un vrai
+    titre parent est lui aussi court, mais son sous-titre est plus petit."""
+    pdf = build_pdf([[
+        Line("Chapitre 1", x=72, y=720, size=18, font="bold"),
+        Line("Les donnees", x=72, y=690, size=13, font="bold"),
+        Line("Une donnee est une observation enregistree sur un support.", x=72, y=665, size=10),
+    ]])
+    roots = structure_of(pdf)
+    assert [section.title for section in roots] == ["Chapitre 1"]
+    assert [child.title for child in roots[0].children] == ["Les donnees"]
+
+
+def test_deux_titres_eloignes_ne_sont_pas_fusionnes():
+    """Un titre isolé en bas de page et le suivant en haut du bloc d'après ne
+    forment pas une tête de chapitre : l'écart vertical les sépare."""
+    pdf = build_pdf([[
+        Line("Annexe", x=72, y=720, size=12),
+        Line("Tableaux de reference", x=72, y=400, size=16, font="bold"),
+        Line("Les tableaux ci-dessous rassemblent les valeurs usuelles.", x=72, y=375, size=10),
+    ]])
+    roots = structure_of(pdf)
+    assert [section.title for section in roots] == ["Annexe", "Tableaux de reference"]
