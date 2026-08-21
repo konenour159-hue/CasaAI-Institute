@@ -130,11 +130,7 @@ export function LessonPage() {
         </RevealSection>
       )}
 
-      {documentTree ? (
-        <RevealSection as="div">
-          <LessonDocumentView sections={documentTree.sections} sourceFile={documentTree.source_file} />
-        </RevealSection>
-      ) : lesson.sections.map((section, i) => (
+      {lesson.sections.map((section, i) => (
         <RevealSection
           key={section.position}
           as="section"
@@ -160,6 +156,25 @@ export function LessonPage() {
           <p className="lesson-section-body">{section.body}</p>
         </RevealSection>
       ))}
+
+      {/* Le document d'origine, consultable mais jamais à la place de la
+          leçon : ce que l'apprenant lit est le travail éditorial publié, pas
+          l'instantané figé de l'import. */}
+      {documentTree && (
+        <RevealSection as="div">
+          <details className="card" style={{ padding: "18px 28px", marginBottom: 24 }}>
+            <summary style={{ cursor: "pointer" }}>
+              Document d'origine — {documentTree.source_file}
+              <span style={{ opacity: 0.6, fontSize: "0.85rem" }}>
+                {" "}({documentTree.page_count} page{documentTree.page_count > 1 ? "s" : ""})
+              </span>
+            </summary>
+            <div style={{ marginTop: 18 }}>
+              <LessonDocumentView sections={documentTree.sections} />
+            </div>
+          </details>
+        </RevealSection>
+      )}
 
       {lesson.depth_levels.length > 0 && (
         <RevealSection as="section" style={{ marginBottom: 32 }}>

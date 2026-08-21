@@ -1,15 +1,18 @@
 import type { DocumentBlock, DocumentSection } from "../types/api";
 
 /**
- * Rendu de la structure documentaire d'une leçon importée.
+ * Rendu du document d'origine d'une leçon importée.
  *
- * Ce que l'affichage plat perdait : le corps d'une section y est une chaîne
- * rendue dans un seul `<p>`, où une liste redevient du texte courant, un
- * extrait de code perd sa chasse fixe et un tableau ses colonnes. Le moteur
- * d'import a pourtant reconnu chacun d'eux ; il suffit de les rendre.
+ * Le PDF reconstruit, tel qu'il était à l'import : une liste y reste une
+ * liste, un extrait de code garde sa chasse fixe, un tableau ses colonnes.
  *
- * Les leçons écrites à la main ne passent jamais par ici — elles n'ont pas de
- * document, et gardent leur affichage d'origine.
+ * Ce n'est **pas** la leçon. La leçon est le travail éditorial que l'admin
+ * publie, et c'est elle que l'apprenant lit ; ce document en est la source,
+ * figée, consultable à côté. Les avoir confondus faisait disparaître de la
+ * page publiée les sections qu'un admin venait de retoucher.
+ *
+ * Pas de marqueur d'incertitude ici non plus : « à vérifier » s'adresse à qui
+ * relit un import, pas à qui apprend. Il vit sur l'écran de prévisualisation.
  */
 
 function isTable(
@@ -77,11 +80,6 @@ function Section({ section, depth }: { section: DocumentSection; depth: number }
     <section style={{ marginBottom: depth === 0 ? 28 : 18 }}>
       <Heading className={depth === 0 ? "lesson-section-title" : "lesson-subsection-title"}>
         {section.title}
-        {section.confidence < 0.6 && (
-          <span className="lesson-uncertain" title="Titre reconnu avec peu de certitude">
-            à vérifier
-          </span>
-        )}
       </Heading>
       {section.blocks.map((block, index) => <Block key={index} block={block} />)}
       {section.children.map((child, index) => (
@@ -91,17 +89,11 @@ function Section({ section, depth }: { section: DocumentSection; depth: number }
   );
 }
 
-export function LessonDocumentView({
-  sections,
-  sourceFile,
-}: {
-  sections: DocumentSection[];
-  sourceFile: string;
-}) {
+export function LessonDocumentView({ sections }: { sections: DocumentSection[] }) {
   return (
     <div className="card" style={{ padding: 28, marginBottom: 24 }}>
       <p className="lesson-document-source">
-        Reconstruit depuis <strong>{sourceFile}</strong>
+        Reconstruit à l'import, avant toute retouche éditoriale.
       </p>
       {sections.map((section, index) => (
         <Section key={`${section.title}-${index}`} section={section} depth={0} />
