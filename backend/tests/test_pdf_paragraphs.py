@@ -208,6 +208,33 @@ def test_paragraphe_continue_d_une_page_a_l_autre():
     )
 
 
+def test_titre_en_haut_de_page_n_est_pas_absorbe():
+    """Le saut de page neutralise les signaux de position, pas les signaux
+    typographiques. Sans cette distinction, un titre de chapitre en tête de
+    page était systématiquement recollé au dernier paragraphe de la page
+    précédente — relevé sur les trois ouvrages de référence, où « Chapitre
+    6 » (25 pt), « Implementing » (30 pt) et « Unit 19 » disparaissaient ainsi
+    de la structure."""
+    pdf = build_pdf([
+        [Line("Derniere ligne du chapitre precedent", y=90, size=11)],
+        [Line("Chapitre 6", y=700, size=25, font="bold")],
+    ])
+    paragraphs = group_paragraphs(attach_lines(extract_pages(pdf)))
+    assert [p.text for p in paragraphs] == ["Derniere ligne du chapitre precedent", "Chapitre 6"]
+
+
+def test_page_achevee_sur_une_phrase_complete_ouvre_un_paragraphe():
+    """Aucun écart vertical n'est comparable d'une page à l'autre : reste la
+    ponctuation. Une page qui se termine sur une phrase achevée termine
+    presque toujours son paragraphe."""
+    pdf = build_pdf([
+        [Line("Le premier paragraphe s'acheve ici.", y=90, size=11)],
+        [Line("Un autre sujet commence sur la page suivante.", y=700, size=11)],
+    ])
+    paragraphs = group_paragraphs(attach_lines(extract_pages(pdf)))
+    assert len(paragraphs) == 2
+
+
 # --- Traçabilité (§26) -------------------------------------------------------
 
 def test_paragraphe_conserve_ses_pages_d_origine():

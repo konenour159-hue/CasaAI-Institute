@@ -60,19 +60,28 @@ def median_leading(pages: list[Page]) -> float:
     return statistics.median(gaps) if gaps else 0.0
 
 
+def _same_flow(previous: Line, current: Line) -> bool:
+    """Deux lignes dont les coordonnées sont comparables.
+
+    C'est-à-dire : même page, et même colonne quand la page en compte
+    plusieurs. Une ligne pleine largeur (colonne -1) reste dans le flux de
+    ses voisines : elle est bien au-dessus ou au-dessous d'elles sur la page.
+    """
+    if previous.page != current.page:
+        return False
+    if previous.column < 0 or current.column < 0:
+        return True
+    return previous.column == current.column
+
+
 def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, paragraph_left: float) -> bool:
     """Décide si `current` ouvre un nouveau paragraphe.
 
     Plusieurs signaux, jamais un seul (règle 6 du cahier) — et chacun
-    correspond à une réalité typographique observable.
+    correspond à une réalité typographique observable. Les signaux
+    typographiques valent partout ; les signaux géométriques n'ont de sens
+    qu'entre deux lignes du même flux (cf. `_same_flow`).
     """
-    # Changement de page : jamais une rupture en soi. Un paragraphe qui se
-    # poursuit d'une page à l'autre doit rester entier — c'est un acquis du
-    # moteur actuel qu'il ne faut pas perdre. Les coordonnées y de deux pages
-    # différentes ne sont de toute façon pas comparables.
-    if current.page != previous.page:
-        return False
-
     reference = max(previous.font_size, current.font_size, 1.0)
 
     # Une police nettement différente marque un changement de nature
@@ -100,18 +109,17 @@ def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, para
     if (current.bold_ratio > 0.6) != (previous.bold_ratio > 0.6):
         return True
 
-    # Changement de colonne : les deux signaux qui restent — écart vertical et
-    # retrait — reposent sur des coordonnées qui ne sont plus comparables. Le
-    # bas de la colonne de gauche et le haut de la colonne de droite sont
-    # voisins dans la lecture mais éloignés sur la page, et la colonne de
-    # droite commence bien plus à droite sans qu'il s'agisse d'un retrait.
-    #
-    # Reste la ponctuation, qui n'est utilisable qu'ici : en cours de colonne
-    # une phrase s'achève souvent en milieu de paragraphe, mais une colonne
-    # qui se *termine* sur une phrase achevée termine presque toujours son
-    # paragraphe. Sans ce signal, la dernière ligne d'une colonne absorbe
-    # systématiquement la première de la suivante.
-    if previous.column >= 0 and current.column >= 0 and previous.column != current.column:
+    # Les deux signaux qui suivent — écart vertical et retrait — reposent sur
+    # des coordonnées, et deux flux différents n'en partagent pas. Le bas
+    # d'une page et le haut de la suivante sont voisins dans la lecture mais
+    # sans rapport géométrique ; le haut de la colonne de droite commence
+    # bien plus à droite sans qu'il s'agisse d'un retrait.
+    if not _same_flow(previous, current):
+        # Reste la ponctuation, qui n'est exploitable qu'ici : en cours de
+        # page une phrase s'achève souvent au milieu d'un paragraphe, mais un
+        # flux qui se *termine* sur une phrase achevée termine presque
+        # toujours son paragraphe. Sans ce signal, la dernière ligne d'une
+        # page absorbe systématiquement la première de la suivante.
         return previous.text.rstrip().endswith(_SENTENCE_END)
 
     # L'interligne attendu dépend de la taille des lignes concernées, pas
