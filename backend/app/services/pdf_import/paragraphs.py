@@ -38,6 +38,10 @@ _FONT_CHANGE_TOLERANCE = 0.20
 # fraction de la taille de police.
 _INDENT_FACTOR = 0.8
 
+# Ponctuation qui achève une phrase. Ne sert qu'au passage d'une colonne à la
+# suivante, où aucun signal géométrique n'est exploitable.
+_SENTENCE_END = (".", "!", "?", ":", "»", "…")
+
 
 def median_leading(pages: list[Page]) -> float:
     """Interligne médian du document, en points.
@@ -56,18 +60,35 @@ def median_leading(pages: list[Page]) -> float:
     return statistics.median(gaps) if gaps else 0.0
 
 
-def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, paragraph_left: float) -> bool:
+def _same_flow(previous: Line, current: Line) -> bool:
+    """Deux lignes dont les coordonnées sont comparables.
+
+    C'est-à-dire : même page, et même colonne quand la page en compte
+    plusieurs. Une ligne pleine largeur (colonne -1) reste dans le flux de
+    ses voisines : elle est bien au-dessus ou au-dessous d'elles sur la page.
+    """
+    if previous.page != current.page:
+        return False
+    if previous.column < 0 or current.column < 0:
+        return True
+    return previous.column == current.column
+
+
+def _starts_new_paragraph(previous: Line, current: Line, *, leading: float,
+                          paragraph_left: float, in_list_item: bool = False) -> bool:
     """Décide si `current` ouvre un nouveau paragraphe.
 
     Plusieurs signaux, jamais un seul (règle 6 du cahier) — et chacun
-    correspond à une réalité typographique observable.
+    correspond à une réalité typographique observable. Les signaux
+    typographiques valent partout ; les signaux géométriques n'ont de sens
+    qu'entre deux lignes du même flux (cf. `_same_flow`).
     """
-    # Changement de page : jamais une rupture en soi. Un paragraphe qui se
-    # poursuit d'une page à l'autre doit rester entier — c'est un acquis du
-    # moteur actuel qu'il ne faut pas perdre. Les coordonnées y de deux pages
-    # différentes ne sont de toute façon pas comparables.
-    if current.page != previous.page:
-        return False
+    # Une ligne de tableau est une unité en soi : ses cellules ne doivent
+    # jamais être recollées à la ligne du dessus, sous peine de rendre le
+    # tableau indéchiffrable — c'est le défaut n° 9 du cahier. Vaut aussi à
+    # l'entrée et à la sortie du tableau.
+    if previous.table != current.table or current.table is not None:
+        return True
 
     reference = max(previous.font_size, current.font_size, 1.0)
 
@@ -96,6 +117,19 @@ def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, para
     if (current.bold_ratio > 0.6) != (previous.bold_ratio > 0.6):
         return True
 
+    # Les deux signaux qui suivent — écart vertical et retrait — reposent sur
+    # des coordonnées, et deux flux différents n'en partagent pas. Le bas
+    # d'une page et le haut de la suivante sont voisins dans la lecture mais
+    # sans rapport géométrique ; le haut de la colonne de droite commence
+    # bien plus à droite sans qu'il s'agisse d'un retrait.
+    if not _same_flow(previous, current):
+        # Reste la ponctuation, qui n'est exploitable qu'ici : en cours de
+        # page une phrase s'achève souvent au milieu d'un paragraphe, mais un
+        # flux qui se *termine* sur une phrase achevée termine presque
+        # toujours son paragraphe. Sans ce signal, la dernière ligne d'une
+        # page absorbe systématiquement la première de la suivante.
+        return previous.text.rstrip().endswith(_SENTENCE_END)
+
     # L'interligne attendu dépend de la taille des lignes concernées, pas
     # seulement de la médiane du document : un titre en gros corps a un
     # interligne proportionnellement plus grand. Comparé à la seule médiane
@@ -111,6 +145,17 @@ def _starts_new_paragraph(previous: Line, current: Line, *, leading: float, para
     # Retrait de première ligne, pour les documents qui marquent leurs
     # paragraphes par l'indentation plutôt que par l'espacement.
     if current.x > paragraph_left + reference * _INDENT_FACTOR:
+        return True
+
+    # Sortie de liste : les items sont indentés, la prose qui suit la liste ne
+    # l'est plus. Une ligne qui repart nettement à gauche referme donc l'item
+    # en cours — sans quoi le dernier item absorbe la phrase suivante dès que
+    # l'écart vertical passe de peu sous le seuil.
+    #
+    # Restreint aux items de liste, et non étendu à tout paragraphe : appliqué
+    # partout, ce même signal découpait 27 % de paragraphes en plus sur les
+    # ouvrages de référence et faisait disparaître une liste.
+    if in_list_item and current.x < paragraph_left - reference * _INDENT_FACTOR:
         return True
 
     return False
@@ -135,7 +180,10 @@ def group_paragraphs(pages: list[Page]) -> list[Paragraph]:
     paragraph_left = ordered[0].x
 
     for line in ordered[1:]:
-        if _starts_new_paragraph(current[-1], line, leading=leading, paragraph_left=paragraph_left):
+        if _starts_new_paragraph(
+            current[-1], line, leading=leading, paragraph_left=paragraph_left,
+            in_list_item=looks_like_list_item(current[0].text),
+        ):
             paragraphs.append(_build_paragraph(current))
             current = [line]
             paragraph_left = line.x
@@ -148,7 +196,12 @@ def group_paragraphs(pages: list[Page]) -> list[Paragraph]:
 
 
 def _build_paragraph(lines: list[Line]) -> Paragraph:
-    return Paragraph(
-        text=join_lines([line.text for line in lines]),
-        lines=list(lines),
-    )
+    # Dans du code, le retour à la ligne fait partie du contenu : le recoller
+    # par des espaces rendrait le bloc illisible, et la reconstruction des
+    # mots coupés y ferait plus de mal que de bien (« read_csv » n'est pas une
+    # césure). La prose, elle, se recolle en un texte continu.
+    if lines and sum(1 for line in lines if line.mono_ratio > 0.6) > len(lines) / 2:
+        text = "\n".join(line.text for line in lines)
+    else:
+        text = join_lines([line.text for line in lines])
+    return Paragraph(text=text, lines=list(lines))

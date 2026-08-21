@@ -252,13 +252,28 @@ def tables_document() -> bytes:
 
 
 def formulas_document() -> bytes:
-    """TEST 12 : formule isolée, ne doit pas devenir une phrase ordinaire."""
-    return build_pdf([_flow([
-        ("Energie", "h1", 16),
-        ("La relation entre masse et energie s'ecrit :", "p", 11),
-        ("E = mc2", "formula", 12),
-        ("Cette equation etablit une equivalence.", "p", 11),
-    ])])
+    """TEST 12 : formule affichée, ne doit pas devenir une phrase ordinaire.
+
+    Composée comme dans un vrai document : centrée et détachée du texte par
+    de l'air au-dessus et au-dessous. Une formule courant au fil de la
+    phrase, au même corps et au même fer, ne porte aucun signal — le cahier
+    interdit de la deviner (règle 8), et cette fixture ne prétend donc pas le
+    contraire.
+
+    Se termine sur un faux ami : une phrase ordinaire comportant un signe
+    « = », qui ne doit surtout pas être prise pour une formule.
+    """
+    return build_pdf([[
+        Line("Energie", x=72, y=720, size=16, font="bold"),
+        Line("La relation entre la masse et l'energie", x=72, y=690, size=11),
+        Line("d'un corps au repos est l'une des plus", x=72, y=673, size=11),
+        Line("connues de toute la physique. Elle s'ecrit :", x=72, y=656, size=11),
+        Line("E = mc²", x=250, y=620, size=12),
+        Line("Cette equation etablit une equivalence", x=72, y=584, size=11),
+        Line("entre deux grandeurs que l'on croyait", x=72, y=567, size=11),
+        Line("sans rapport l'une avec l'autre.", x=72, y=550, size=11),
+        Line("Le taux d'erreur = 5 % sur cet echantillon.", x=72, y=514, size=11),
+    ]])
 
 
 def code_document() -> bytes:
@@ -272,6 +287,20 @@ def code_document() -> bytes:
     ])])
 
 
+# Partagé par les deux fixtures à colonnes, pour que la seule différence
+# entre elles soit le titre pleine largeur.
+_TWO_COLUMN_ROWS = [
+    ("La donnee est la matiere", "Le modele apprend ensuite"),
+    ("premiere de tout systeme", "a partir de ces exemples"),
+    ("d'apprentissage automatique.", "pour generaliser."),
+    ("Sans jeu de donnees fiable,", "Cette capacite a traiter"),
+    ("aucun modele ne peut etre", "des situations nouvelles"),
+    ("entraine correctement, quelle", "constitue le coeur meme"),
+    ("que soit la qualite de", "de la demarche, et son"),
+    ("l'algorithme retenu ensuite.", "principal critere de succes."),
+]
+
+
 def two_columns() -> bytes:
     """TEST 14 : deux colonnes, flux de contenu **entrelacé** (gauche, droite,
     gauche, droite… à y égal).
@@ -281,14 +310,32 @@ def two_columns() -> bytes:
     détection de colonnes, la lecture mélange alors les deux colonnes. Un
     flux déjà ordonné par colonne ne prouverait rien — l'ordre serait correct
     par accident.
+
+    Les colonnes comptent volontairement plusieurs lignes bien remplies :
+    c'est ce qui distingue une vraie mise en colonnes d'un tableau à deux
+    colonnes, dont les cellules sont courtes et peu nombreuses (cf.
+    `tables_document`, qui ne doit *pas* être pris pour deux colonnes).
     """
     lines: list[Line] = []
     y = 700
-    for left, right in [
-        ("La donnee est la matiere", "Le modele apprend ensuite"),
-        ("premiere de tout systeme", "a partir de ces exemples"),
-        ("d'apprentissage automatique.", "pour generaliser."),
-    ]:
+    for left, right in _TWO_COLUMN_ROWS:
+        lines.append(Line(left, x=72, y=y, size=11))
+        lines.append(Line(right, x=330, y=y, size=11))
+        y -= 17
+    return build_pdf([lines])
+
+
+def two_columns_with_banner() -> bytes:
+    """Deux colonnes surmontées d'un titre courant sur toute la largeur.
+
+    Cas très répandu dans les documents académiques, et piège pour la
+    détection : le titre traverse la gouttière et la ferait disparaître du
+    profil. Il doit rester à sa place dans l'ordre de lecture, avant les deux
+    colonnes.
+    """
+    lines: list[Line] = [Line("Apprentissage automatique supervise", x=72, y=730, size=16, font="bold")]
+    y = 700
+    for left, right in _TWO_COLUMN_ROWS:
         lines.append(Line(left, x=72, y=y, size=11))
         lines.append(Line(right, x=330, y=y, size=11))
         y -= 17
@@ -387,6 +434,7 @@ ALL_FIXTURES = {
     "formulas": formulas_document,
     "code": code_document,
     "two_columns": two_columns,
+    "two_columns_with_banner": two_columns_with_banner,
     "hyphenation": hyphenation,
     "complex_course": complex_course,
     "repeated_numbered_headings": repeated_numbered_headings,

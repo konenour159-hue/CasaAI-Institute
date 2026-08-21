@@ -1,16 +1,17 @@
 """
 Persistance de la structure documentaire reconstruite à l'import.
 
-Écrit l'arbre produit par `services/pdf_import` dans document_sections et
-content_blocks. Ne touche jamais à lesson_sections : les deux représentations
-coexistent le temps que le frontend puisse consommer la structure imbriquée.
+Écrit l'arbre produit par `services/pdf_import` dans imported_documents,
+document_sections et content_blocks. Ne touche jamais à lesson_sections : les
+deux corpus sont séparés par construction (voir le docstring de
+`models/document.py`).
 """
 from __future__ import annotations
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.document import ContentBlock, DocumentSection
+from app.models.document import ContentBlock, DocumentSection, ImportedDocument
 from app.services.pdf_import.hierarchy import Section
 
 
@@ -18,8 +19,26 @@ class DocumentStructureRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def replace_for_lesson(self, lesson_id: str, roots: list[Section]) -> int:
-        """Remplace intégralement la structure d'une leçon.
+    def create_document(
+        self, *, source_file: str, title: str, page_count: int,
+        school_id: str | None = None, lesson_id: str | None = None,
+        report: dict | None = None,
+    ) -> ImportedDocument:
+        """Enregistre la source, avant son arbre.
+
+        `lesson_id` reste facultatif : un document de référence alimente le
+        corpus sans qu'aucun cours ne soit créé.
+        """
+        document = ImportedDocument(
+            source_file=source_file, title=title, page_count=page_count,
+            school_id=school_id, lesson_id=lesson_id, report=report,
+        )
+        self.db.add(document)
+        self.db.flush()
+        return document
+
+    def replace_for_document(self, document_id, roots: list[Section]) -> int:
+        """Remplace intégralement la structure d'un document.
 
         Même convention que le reste de l'administration de contenu (une
         sauvegarde remplace l'existant plutôt que de le fusionner) : cela
@@ -31,20 +50,20 @@ class DocumentStructureRepository:
         # Les blocs partent en cascade avec leurs sections, de même que les
         # sections enfants — un seul DELETE sur les racines suffit donc.
         self.db.execute(
-            delete(DocumentSection).where(DocumentSection.lesson_id == lesson_id)
+            delete(DocumentSection).where(DocumentSection.document_id == document_id)
         )
         self.db.flush()
 
         written = 0
         for position, root in enumerate(roots):
-            written += self._insert(lesson_id, root, parent=None, position=position)
+            written += self._insert(document_id, root, parent=None, position=position)
         self.db.flush()
         return written
 
-    def _insert(self, lesson_id: str, section: Section, *, parent: DocumentSection | None,
+    def _insert(self, document_id, section: Section, *, parent: DocumentSection | None,
                 position: int) -> int:
         row = DocumentSection(
-            lesson_id=lesson_id,
+            document_id=document_id,
             parent=parent,
             level=section.level,
             position=position,
@@ -70,19 +89,32 @@ class DocumentStructureRepository:
 
         written = 1
         for child_position, child in enumerate(section.children):
-            written += self._insert(lesson_id, child, parent=row, position=child_position)
+            written += self._insert(document_id, child, parent=row, position=child_position)
         return written
 
-    def get_tree(self, lesson_id: str) -> list[DocumentSection]:
-        """Racines de l'arbre d'une leçon, enfants et blocs chargés."""
+    def get_document_for_lesson(self, lesson_id: str) -> ImportedDocument | None:
+        """Document dont une leçon est issue, ou None si elle a été écrite à
+        la main — ce qui est le cas de tout le contenu antérieur à l'import."""
+        return self.db.execute(
+            select(ImportedDocument).where(ImportedDocument.lesson_id == lesson_id)
+        ).scalars().first()
+
+    def get_tree(self, document_id) -> list[DocumentSection]:
+        """Racines de l'arbre d'un document, enfants et blocs chargés."""
         return list(
             self.db.execute(
                 select(DocumentSection)
-                .where(DocumentSection.lesson_id == lesson_id, DocumentSection.parent_id.is_(None))
+                .where(DocumentSection.document_id == document_id, DocumentSection.parent_id.is_(None))
                 .options(selectinload(DocumentSection.blocks))
                 .order_by(DocumentSection.position)
             ).scalars()
         )
+
+    def get_tree_for_lesson(self, lesson_id: str) -> list[DocumentSection]:
+        """Racines de l'arbre de la leçon, vide si elle n'est pas issue d'un
+        import."""
+        document = self.get_document_for_lesson(lesson_id)
+        return self.get_tree(document.id) if document is not None else []
 
 
 def _source_of(block) -> dict:

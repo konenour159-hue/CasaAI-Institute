@@ -74,18 +74,30 @@ def _style_flags(font_name: str) -> tuple[bool, bool, bool]:
     return bold, italic, mono
 
 
+def _translated(tm: list[float], tx: float, ty: float) -> list[float]:
+    """Matrice de texte après un déplacement relatif `tx ty Td`.
+
+    `Td` déplace relativement à la matrice de ligne courante : additionner
+    naïvement à `tm[4]`/`tm[5]` serait faux dès que le texte est mis à
+    l'échelle ou tourné.
+    """
+    return [
+        tm[0], tm[1], tm[2], tm[3],
+        tx * tm[0] + ty * tm[2] + tm[4],
+        tx * tm[1] + ty * tm[3] + tm[5],
+    ]
+
+
 def _recover_positions(calls: list[dict]) -> None:
     """Répare les positions dégénérées, en place.
 
-    pypdf n'appelle pas systématiquement le visiteur avec la matrice
-    correspondant au texte transmis : il arrive qu'un fragment soit remonté
-    avec une matrice à zéro, la position réelle n'apparaissant que dans
-    l'appel *suivant* (observé de façon reproductible quand le texte commence
-    par une espace). Sans cette réparation, le fragment se retrouve en (0, 0)
-    et forme une ligne parasite en bas de page.
+    Filet de dernier recours, derrière le suivi des opérateurs de
+    positionnement : il ne reste ici que les fragments dont la position n'a
+    jamais été établie par un `Td`/`Tm` observable.
 
-    On cherche donc la position valide la plus proche, en priorité vers
-    l'avant puisque c'est là qu'elle se trouve dans le cas observé.
+    On cherche la position valide la plus proche, en priorité vers l'avant :
+    c'est là qu'elle se trouve dans le cas courant, où pypdf remonte le texte
+    avant la matrice qui lui correspond.
     """
     def is_degenerate(call: dict) -> bool:
         return call["x"] == 0 and call["y"] == 0
@@ -118,9 +130,38 @@ def extract_pages(file_bytes: bytes) -> list[Page]:
         box = pdf_page.mediabox
         page = Page(number=index, width=float(box.width), height=float(box.height))
         calls: list[dict] = []
+        # Dernière position établie par un opérateur de positionnement. Voir
+        # `operand` ci-dessous.
+        pending: list[list[float] | None] = [None]
 
-        def visitor(text, cm, tm, font_dict, font_size, _calls=calls):
+        def operand(operator, operands, cm, tm, _pending=pending):
+            """Suit les opérateurs qui fixent la matrice de texte.
+
+            pypdf remonte le texte *avant* la matrice qui lui correspond quand
+            le fragment commence par une espace : le visiteur de texte reçoit
+            alors une matrice à zéro, et la vraie position n'arrive qu'à
+            l'appel suivant. Le dernier fragment d'une page n'a pas d'appel
+            suivant — sa position était donc irrécupérable, et il héritait de
+            celle de son voisin, qui peut appartenir à une autre colonne.
+
+            Le visiteur d'opérandes, lui, voit passer le `Td` correspondant
+            *avant* l'appel de texte : il suffit de le retenir.
+            """
+            name = operator.decode("latin-1") if isinstance(operator, bytes) else str(operator)
+            if name in ("Td", "TD") and len(operands) >= 2:
+                matrix = _translated(list(tm), float(operands[0]), float(operands[1]))
+            elif name == "Tm" and len(operands) >= 6:
+                matrix = [float(value) for value in operands[:6]]
+            else:
+                return
+            _pending[0] = compose(matrix, list(cm))
+
+        def visitor(text, cm, tm, font_dict, font_size, _calls=calls, _pending=pending):
             matrix = compose(list(tm), list(cm))
+            if matrix[4] == 0 and matrix[5] == 0 and _pending[0] is not None:
+                # Matrice dégénérée : la position — et l'échelle avec elle —
+                # sont celles que le dernier opérateur a établies.
+                matrix = _pending[0]
             # Échelle verticale effective : norme de la seconde ligne de la
             # matrice composée.
             scale = math.hypot(matrix[2], matrix[3])
@@ -133,7 +174,7 @@ def extract_pages(file_bytes: bytes) -> list[Page]:
                 "font_name": name,
             })
 
-        pdf_page.extract_text(visitor_text=visitor)
+        pdf_page.extract_text(visitor_text=visitor, visitor_operand_before=operand)
         _recover_positions(calls)
 
         for call in calls:

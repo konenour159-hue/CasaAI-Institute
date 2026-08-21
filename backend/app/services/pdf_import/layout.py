@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 import statistics
 
+from app.services.pdf_import.columns import detect_columns, sort_reading_order
 from app.services.pdf_import.models import Fragment, Line, Page
 
 # Deux fragments appartiennent à la même ligne si leur écart vertical reste
@@ -50,11 +51,7 @@ def _join_fragments(fragments: list[Fragment]) -> str:
     for fragment in fragments:
         text = fragment.text
         if previous is not None:
-            # Largeur approximative du fragment précédent : pypdf ne fournit
-            # pas les métriques de glyphes, on estime à partir de la taille de
-            # police, ce qui suffit à décider de la présence d'une espace.
-            approx_width = len(previous.text) * previous.font_size * 0.5
-            gap = fragment.x - (previous.x + approx_width)
+            gap = fragment.x - (previous.x + previous.approx_width)
             needs_space = gap > previous.font_size * _SPACE_GAP_RATIO
             already_spaced = parts and (parts[-1].endswith(" ") or text.startswith(" "))
             if needs_space and not already_spaced:
@@ -68,8 +65,13 @@ def _join_fragments(fragments: list[Fragment]) -> str:
 
 
 def group_lines(page: Page) -> list[Line]:
-    """Fragments d'une page → lignes visuelles, dans l'ordre de lecture
-    vertical (du haut vers le bas).
+    """Fragments d'une page → lignes visuelles, dans l'ordre de lecture.
+
+    Le regroupement par ordonnée n'a lieu qu'à l'intérieur d'une colonne : sur
+    une page à deux colonnes, les lignes gauche et droite partagent la même
+    ordonnée et seraient sinon réunies en une seule ligne, mêlant deux phrases
+    sans rapport (§11). L'ordre des groupes, lui, est celui de la lecture —
+    colonne de gauche entière, puis colonne de droite.
 
     L'ordre horizontal à l'intérieur d'une ligne est rétabli par tri sur x :
     l'ordre d'émission du flux de contenu ne le garantit pas.
@@ -77,7 +79,21 @@ def group_lines(page: Page) -> list[Line]:
     if not page.fragments:
         return []
 
-    remaining = sorted(page.fragments, key=lambda f: (-f.y, f.x))
+    layout = detect_columns(page)
+    page.column_count = layout.count
+
+    lines: list[Line] = []
+    for group in sort_reading_order(page, layout):
+        lines.extend(_group_by_row(group.fragments, column=group.column))
+    return [line for line in lines if line.text]
+
+
+def _group_by_row(fragments: list[Fragment], *, column: int) -> list[Line]:
+    """Fragments d'une même colonne → lignes, du haut vers le bas."""
+    if not fragments:
+        return []
+
+    remaining = sorted(fragments, key=lambda f: (-f.y, f.x))
     lines: list[Line] = []
     current: list[Fragment] = [remaining[0]]
 
@@ -87,14 +103,14 @@ def group_lines(page: Page) -> list[Line]:
         if abs(fragment.y - reference.y) <= tolerance:
             current.append(fragment)
         else:
-            lines.append(_build_line(current))
+            lines.append(_build_line(current, column=column))
             current = [fragment]
 
-    lines.append(_build_line(current))
-    return [line for line in lines if line.text]
+    lines.append(_build_line(current, column=column))
+    return lines
 
 
-def _build_line(fragments: list[Fragment]) -> Line:
+def _build_line(fragments: list[Fragment], *, column: int = 0) -> Line:
     ordered = sorted(fragments, key=lambda f: f.x)
     return Line(
         text=_join_fragments(ordered),
@@ -103,6 +119,7 @@ def _build_line(fragments: list[Fragment]) -> Line:
         y=statistics.median([f.y for f in ordered]),
         font_size=_dominant_font_size(ordered),
         fragments=ordered,
+        column=column,
     )
 
 

@@ -16,6 +16,7 @@ import type {
   MediaUploadResult,
   Page,
   PdfImportResult,
+  PdfPreviewResult,
 } from "../types/api";
 
 export const adminService = {
@@ -55,10 +56,17 @@ export const adminService = {
   deleteLesson: (id: string) => api.delete<void>(`/api/admin/lessons/${id}`),
 
   // --- Import PDF -----------------------------------------------------------
-  importPdf: (file: File, schoolId: string) => {
+  previewPdf: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.postForm<PdfPreviewResult>("/api/admin/courses/preview-pdf", form);
+  },
+
+  importPdf: (file: File, schoolId: string, createCourse = true) => {
     const form = new FormData();
     form.append("school_id", schoolId);
     form.append("file", file);
+    form.append("create_course", String(createCourse));
     return api.postForm<PdfImportResult>("/api/admin/courses/import-pdf", form);
   },
 

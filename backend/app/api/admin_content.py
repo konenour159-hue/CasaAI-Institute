@@ -20,6 +20,9 @@ from app.schemas.admin import (
     AdminLessonListResponse,
     AdminLessonOut,
     PdfImportResponse,
+    PdfPreviewBlockOut,
+    PdfPreviewResponse,
+    PdfPreviewSectionOut,
 )
 from app.services.admin_content_service import (
     AdminContentService,
@@ -27,7 +30,7 @@ from app.services.admin_content_service import (
     LessonNotFoundError,
     ValidationError,
 )
-from app.services.pdf_import_service import PdfExtractionError, PdfImportService
+from app.services.pdf_import_service import PdfExtractionError, PdfImportService, preview_pdf
 
 router = APIRouter(prefix="/api/admin", tags=["admin-content"])
 
@@ -181,14 +184,45 @@ def admin_delete_lesson(
 
 # --- Import PDF -----------------------------------------------------------
 
-@router.post("/courses/import-pdf", response_model=PdfImportResponse, status_code=status.HTTP_201_CREATED)
-async def admin_import_pdf(
-    school_id: str = Form(...),
+_PDF_CONTENT_TYPES = ("application/pdf", "application/x-pdf")
+
+# Longueur de l'extrait d'un bloc dans la prévisualisation. Assez pour
+# reconnaître le contenu, assez peu pour que l'arbre d'un ouvrage entier
+# reste une réponse raisonnable.
+_PREVIEW_LENGTH = 160
+
+
+def _preview_section(section) -> PdfPreviewSectionOut:
+    return PdfPreviewSectionOut(
+        title=section.title,
+        level=section.level,
+        confidence=section.confidence,
+        page_start=section.page_start if section.page_start >= 0 else None,
+        page_end=section.page_end if section.page_end >= 0 else None,
+        blocks=[
+            PdfPreviewBlockOut(
+                kind=block.kind,
+                confidence=block.confidence,
+                preview=block.text[:_PREVIEW_LENGTH],
+                items=block.items or None,
+            )
+            for block in section.blocks
+        ],
+        children=[_preview_section(child) for child in section.children],
+    )
+
+
+@router.post("/courses/preview-pdf", response_model=PdfPreviewResponse)
+async def admin_preview_pdf(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
     _admin: User = Depends(require_content_admin),
-) -> PdfImportResponse:
-    if file.content_type not in ("application/pdf", "application/x-pdf"):
+) -> PdfPreviewResponse:
+    """Analyse un PDF et renvoie ce que l'import produirait, sans rien créer.
+
+    Pas de `school_id` ni de session : la prévisualisation ne touche à rien
+    en base, et n'a donc besoin ni de l'une ni de l'autre.
+    """
+    if file.content_type not in _PDF_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Type de fichier non supporté : {file.content_type}. PDF attendu.",
@@ -196,8 +230,42 @@ async def admin_import_pdf(
 
     file_bytes = await file.read()
     try:
-        course, lesson, page_count, warning, report = PdfImportService(db).import_pdf(
-            file_bytes=file_bytes, filename=file.filename or "import.pdf", school_id=school_id,
+        title, pages, report, roots = preview_pdf(
+            file_bytes=file_bytes, filename=file.filename or "import.pdf",
+        )
+    except PdfExtractionError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
+
+    return PdfPreviewResponse(
+        title=title, pages=pages, report=report,
+        sections=[_preview_section(root) for root in roots],
+    )
+
+
+@router.post("/courses/import-pdf", response_model=PdfImportResponse, status_code=status.HTTP_201_CREATED)
+async def admin_import_pdf(
+    school_id: str = Form(...),
+    file: UploadFile = File(...),
+    create_course: bool = Form(default=True),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_content_admin),
+) -> PdfImportResponse:
+    """Importe un PDF.
+
+    `create_course=false` verse le document au corpus documentaire sans créer
+    de cours : la réponse ne porte alors ni `course_id` ni `lesson_id`.
+    """
+    if file.content_type not in _PDF_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Type de fichier non supporté : {file.content_type}. PDF attendu.",
+        )
+
+    file_bytes = await file.read()
+    try:
+        result = PdfImportService(db).import_pdf(
+            file_bytes=file_bytes, filename=file.filename or "import.pdf",
+            school_id=school_id, create_course=create_course,
         )
     except ValidationError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
@@ -205,7 +273,11 @@ async def admin_import_pdf(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e))
 
     return PdfImportResponse(
-        course_id=course.id, lesson_id=lesson.id, title=course.title,
-        pages_extracted=page_count, warning=warning,
-        report=report.to_dict() if report is not None else None,
+        document_id=result.document.id,
+        course_id=result.course.id if result.course is not None else None,
+        lesson_id=result.lesson.id if result.lesson is not None else None,
+        title=result.document.title,
+        pages_extracted=result.page_count,
+        warning=result.warning,
+        report=result.report.to_dict() if result.report is not None else None,
     )

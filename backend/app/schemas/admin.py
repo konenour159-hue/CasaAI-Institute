@@ -163,8 +163,11 @@ class AdminLessonListResponse(BaseModel):
 # --- Import PDF -----------------------------------------------------------
 
 class PdfImportResponse(BaseModel):
-    course_id: str
-    lesson_id: str
+    document_id: uuid.UUID
+    """Le document versé au corpus. Toujours présent, contrairement au cours."""
+    # None pour un document de référence, importé sans création de cours.
+    course_id: str | None = None
+    lesson_id: str | None = None
     title: str
     pages_extracted: int
     warning: str | None = None
@@ -173,6 +176,38 @@ class PdfImportResponse(BaseModel):
     # les clients existants qui l'ignorent continuent de fonctionner, et il
     # vaut None si la reconstruction a échoué.
     report: dict | None = None
+
+
+# --- Prévisualisation avant validation (§29 cahier import PDF) --------------
+# L'import crée un cours en brouillon dès l'envoi du fichier : rien ne permet
+# de voir ce que le moteur a compris avant que ce soit écrit. Ces schémas
+# décrivent la même analyse, rendue sans rien enregistrer.
+
+class PdfPreviewBlockOut(BaseModel):
+    kind: str
+    confidence: float
+    preview: str
+    """Premiers caractères du bloc — de quoi reconnaître son contenu dans
+    l'arbre, sans transporter tout le document dans la réponse."""
+    items: list | dict | None = None
+
+
+class PdfPreviewSectionOut(BaseModel):
+    title: str
+    level: int
+    confidence: float
+    page_start: int | None = None
+    page_end: int | None = None
+    blocks: list[PdfPreviewBlockOut] = []
+    children: list["PdfPreviewSectionOut"] = []
+
+
+class PdfPreviewResponse(BaseModel):
+    title: str
+    pages: int
+    report: dict
+    sections: list[PdfPreviewSectionOut] = []
+
 
 # --- Quiz (§15 cahier fonctionnel) -----------------------------------------
 # ADMIN et SUPER_ADMIN peuvent tous deux gérer les quiz (cf. require_content_admin

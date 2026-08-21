@@ -5,10 +5,11 @@ import { RevealSection } from "../components/RevealSection";
 import { MiniDiagram } from "../components/MiniDiagram";
 import { Callout } from "../components/Callout";
 import { LessonSkeleton } from "../components/Skeleton";
+import { LessonDocumentView } from "../components/LessonDocumentView";
 import { API_BASE_URL } from "../services/apiClient";
 import { contentService } from "../services/contentService";
 import { progressService } from "../services/progressService";
-import type { CourseListItem, LessonDepthLevel, LessonDetail } from "../types/api";
+import type { CourseListItem, LessonDepthLevel, LessonDetail, LessonDocument } from "../types/api";
 
 function resolveImageSrc(url: string): string {
   return url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
@@ -24,6 +25,7 @@ export function LessonPage() {
   const { lessonId } = useParams<{ lessonId: string }>();
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
   const [course, setCourse] = useState<CourseListItem | null>(null);
+  const [documentTree, setDocumentTree] = useState<LessonDocument | null>(null);
   const [activeDepth, setActiveDepth] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
   const [completed, setCompleted] = useState(false);
@@ -41,6 +43,12 @@ export function LessonPage() {
         // « où suis-je ? ». Best-effort — l'absence de titre de cours
         // n'empêche pas la lecture de la leçon.
         contentService.getCourse(data.course_id).then(setCourse).catch(() => {});
+        // Structure documentaire, pour les seules leçons issues d'un import.
+        // Best-effort là aussi : son absence ramène à l'affichage plat, qui
+        // porte le même contenu.
+        if (data.has_document) {
+          progressService.getLessonDocument(lessonId).then(setDocumentTree).catch(() => {});
+        }
       })
       .catch(() => setNotFound(true));
   }, [lessonId]);
@@ -122,7 +130,11 @@ export function LessonPage() {
         </RevealSection>
       )}
 
-      {lesson.sections.map((section, i) => (
+      {documentTree ? (
+        <RevealSection as="div">
+          <LessonDocumentView sections={documentTree.sections} sourceFile={documentTree.source_file} />
+        </RevealSection>
+      ) : lesson.sections.map((section, i) => (
         <RevealSection
           key={section.position}
           as="section"

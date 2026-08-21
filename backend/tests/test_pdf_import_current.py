@@ -284,21 +284,21 @@ def test_import_complet_cree_un_cours_et_une_lecon(db_session):
     db_session.add(School(id="pdf-test-school", name="École", short_name="PDF", color="#000000"))
     db_session.commit()
 
-    course, lesson, page_count, warning, _report = PdfImportService(db_session).import_pdf(
+    result = PdfImportService(db_session).import_pdf(
         file_bytes=ALL_FIXTURES["complex_course"](),
         filename="cours_test.pdf",
         school_id="pdf-test-school",
     )
 
-    assert page_count == 2
-    assert warning is None
-    assert course.status.value == "DRAFT"
-    assert lesson.status.value == "DRAFT"
-    assert course.title == "Cours Test"  # dérivé du nom de fichier
-    assert len(lesson.sections) >= 2
-    assert all(s.title and s.body for s in lesson.sections)
+    assert result.page_count == 2
+    assert result.warning is None
+    assert result.course.status.value == "DRAFT"
+    assert result.lesson.status.value == "DRAFT"
+    assert result.course.title == "Cours Test"  # dérivé du nom de fichier
+    assert len(result.lesson.sections) >= 2
+    assert all(s.title and s.body for s in result.lesson.sections)
     # Les positions sont ordonnées sans trou — l'affichage s'appuie dessus.
-    assert [s.position for s in lesson.sections] == list(range(len(lesson.sections)))
+    assert [s.position for s in result.lesson.sections] == list(range(len(result.lesson.sections)))
 
 
 def test_import_signale_un_pdf_sans_texte_extractible(db_session):
@@ -310,10 +310,10 @@ def test_import_signale_un_pdf_sans_texte_extractible(db_session):
     from tests.pdf_fixtures import build_pdf
 
     empty_pdf = build_pdf([[]])  # une page, aucun texte
-    _course, _lesson, page_count, warning, _report = PdfImportService(db_session).import_pdf(
+    result = PdfImportService(db_session).import_pdf(
         file_bytes=empty_pdf, filename="scan.pdf", school_id="pdf-empty-school",
     )
 
-    assert page_count == 1
-    assert warning is not None
-    assert "scanné" in warning
+    assert result.page_count == 1
+    assert result.warning is not None
+    assert "scanné" in result.warning

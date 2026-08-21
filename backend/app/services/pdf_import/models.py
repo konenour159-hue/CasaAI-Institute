@@ -39,6 +39,18 @@ class Fragment:
     italic: bool
     mono: bool
 
+    @property
+    def approx_width(self) -> float:
+        """Largeur approximative, en points.
+
+        pypdf ne restitue pas les métriques de glyphes : la largeur est
+        estimée à partir de la taille de police, en prenant une chasse
+        moyenne d'une demi-cadratin. Grossier, mais suffisant pour les deux
+        usages qui en dépendent — décider s'il faut une espace entre deux
+        fragments, et repérer une bande verticale que le texte n'occupe pas.
+        """
+        return len(self.text) * self.font_size * 0.5
+
 
 @dataclass
 class Line:
@@ -55,6 +67,15 @@ class Line:
     # ou None. La ligne est annotée plutôt que supprimée, pour pouvoir
     # justifier la décision et la reconsidérer sans relire le PDF.
     boilerplate: str | None = None
+    # Index de colonne sur la page, ou -1 pour un élément pleine largeur.
+    # Vaut 0 partout sur une page à une seule colonne — cas très majoritaire.
+    # Sert à l'étape suivante : entre deux colonnes, les ordonnées ne sont
+    # plus comparables, exactement comme entre deux pages.
+    column: int = 0
+    # Index du tableau auquel la ligne appartient, renseigné par
+    # `tables.detect_tables`. Même principe que `boilerplate` : la ligne est
+    # annotée, jamais déplacée.
+    table: int | None = None
 
     @property
     def bold_ratio(self) -> float:
@@ -136,6 +157,10 @@ class Page:
     height: float
     fragments: list[Fragment] = field(default_factory=list)
     lines: list[Line] = field(default_factory=list)
+    # Nombre de colonnes retenu par la détection de mise en page. Conservé
+    # sur la page pour que le rapport de qualité puisse signaler les pages
+    # réordonnées sans relancer l'analyse.
+    column_count: int = 1
 
     def distance_from_top(self, y: float) -> float:
         return self.height - y

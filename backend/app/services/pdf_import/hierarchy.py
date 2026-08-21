@@ -8,24 +8,38 @@ déduit d'un seul indice.
 
 Deux indices sont combinés, en retenant le plus profond des deux :
 
-- le **rang de taille de police** parmi les titres du document. C'est l'indice
-  le plus universel : il ne suppose aucune numérotation, et les mesures sur
-  les ouvrages de référence montrent des paliers nets (30 pt de titre de
-  chapitre contre 12,5 pt de section ; 14 pt contre 12 pt) ;
+- le **palier de taille de police** parmi les titres du document. C'est
+  l'indice le plus universel : il ne suppose aucune numérotation, et les
+  mesures sur les ouvrages de référence montrent des paliers nets (30 pt de
+  titre de chapitre contre 12,5 pt de section ; 14 pt contre 12 pt) ;
 - la **profondeur de numérotation** quand elle existe : « 1.1.1 » est un
   niveau 3, quelle que soit sa taille.
 
 Retenir le maximum des deux évite qu'un sous-titre composé dans la même
 police que son parent ne remonte au même niveau que lui, tout en gardant un
 classement correct sur les documents sans numérotation.
+
+Deux pièges mesurés sur les ouvrages réels, et corrigés ici :
+
+1. **Le surtitre.** « Unit 18 » composé en 12 pt au-dessus de « Using a MySQL
+   Database » en 14 pt n'est pas le parent de ce titre : c'est la même tête de
+   chapitre, en deux lignes. Traités séparément, le plus petit devenait le
+   parent du plus grand et emportait tout le chapitre suivant dans la branche
+   précédente. Voir `merge_overline_headings`.
+
+2. **Le rang dense.** Classer les tailles distinctes une à une donnait, sur un
+   ouvrage à six tailles de titre, des rangs de 1 à 6 : tout ce qui se situait
+   sous la quatrième s'écrasait au niveau 4, tandis que 12 pt et 11,6 pt —
+   visuellement le même niveau — se retrouvaient séparés. Les tailles sont
+   donc regroupées en paliers.
 """
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from app.services.pdf_import.blocks import Block, Element
-from app.services.pdf_import.classifier import Classification
+from app.services.pdf_import.classifier import HEADING, Classification
 from app.services.pdf_import.models import Paragraph
 
 # Profondeur de numérotation : « 1. » → 1, « 1.2 » → 2, « 1.2.3 » → 3.
@@ -33,6 +47,19 @@ _DOTTED_RE = re.compile(r"^(\d+(?:\.\d+)*)[.)]?\s+\S")
 
 # Niveau maximum géré (§16 : au minimum H1 à H4).
 MAX_LEVEL = 4
+
+# Écart relatif en deçà duquel deux tailles de titre relèvent du même palier.
+# Calibré sur les trois ouvrages : leurs échelles typographiques progressent
+# par bonds de 12 % à 60 % entre niveaux, tandis que des variations de 3 % à
+# 7 % cohabitent *à l'intérieur* d'un même niveau (12 et 11,6 pt ; 15 et
+# 14 pt ; 12,5 et 12 pt). 8 % sépare les deux sans ambiguïté.
+_SIZE_BAND_TOLERANCE = 0.08
+
+# Un surtitre est court par nature — un numéro d'unité, un rappel de partie.
+_MAX_OVERLINE_LENGTH = 50
+
+# Et il est collé à son titre : au-delà, ce sont deux titres distincts.
+_OVERLINE_GAP_FACTOR = 2.5
 
 
 @dataclass
@@ -70,18 +97,37 @@ def numbering_depth(text: str) -> int:
     return len(match.group(1).split("."))
 
 
+def size_bands(sizes: list[float]) -> dict[float, int]:
+    """Tailles de titre → rang de palier, 1 pour la plus grande.
+
+    Le palier est ouvert par sa plus grande taille, et toutes celles qui
+    restent à moins de 8 % d'elle le rejoignent. Comparer à cette taille de
+    référence plutôt qu'à la précédente évite qu'une suite de petits écarts
+    ne fasse dériver un palier de proche en proche jusqu'à réunir des niveaux
+    manifestement distincts.
+    """
+    bands: dict[float, int] = {}
+    rank = 0
+    anchor: float | None = None
+    for size in sorted(set(sizes), reverse=True):
+        if anchor is None or (anchor - size) > anchor * _SIZE_BAND_TOLERANCE:
+            rank += 1
+            anchor = size
+        bands[size] = rank
+    return bands
+
+
 def assign_levels(headings: list[tuple[Paragraph, Classification]]) -> list[int]:
     """Niveau de chaque titre, dans l'ordre d'apparition.
 
-    Les tailles de police sont d'abord classées par ordre décroissant, ce qui
-    donne un rang. Un titre numéroté peut ensuite être approfondi si sa
-    numérotation l'indique.
+    Les tailles de police sont d'abord regroupées en paliers, ce qui donne un
+    rang. Un titre numéroté peut ensuite être approfondi si sa numérotation
+    l'indique.
     """
     if not headings:
         return []
 
-    sizes = sorted({round(paragraph.font_size, 1) for paragraph, _ in headings}, reverse=True)
-    rank_by_size = {size: index + 1 for index, size in enumerate(sizes)}
+    rank_by_size = size_bands([round(paragraph.font_size, 1) for paragraph, _ in headings])
 
     levels: list[int] = []
     for paragraph, _classification in headings:
@@ -89,6 +135,79 @@ def assign_levels(headings: list[tuple[Paragraph, Classification]]) -> list[int]
         depth = numbering_depth(paragraph.text)
         levels.append(min(MAX_LEVEL, max(rank, depth) if depth else rank))
     return levels
+
+
+def _is_overline(first: Paragraph, first_result: Classification,
+                 second: Paragraph, second_result: Classification) -> bool:
+    """Vrai si `first` est le surtitre de `second`.
+
+    Cinq conditions concordantes (règle 6). Aucune ne suffirait : un vrai
+    titre parent est lui aussi court et suivi d'un sous-titre — ce qui le
+    distingue, c'est que son sous-titre est plus *petit* que lui, et qu'un
+    contenu les sépare presque toujours.
+    """
+    if first_result.type != HEADING or second_result.type != HEADING:
+        return False
+    if not first.lines or not second.lines:
+        return False
+    # Un surtitre et son titre ne se répartissent pas sur deux pages.
+    if first.page_end != second.page_start:
+        return False
+    if len(first.text.strip()) > _MAX_OVERLINE_LENGTH:
+        return False
+    if first.text.strip().endswith((".", "!", "?")):
+        return False
+    # Le titre doit appartenir à un palier franchement supérieur : à taille
+    # égale, ce sont deux titres de même niveau qui se suivent.
+    if second.font_size <= first.font_size * (1 + _SIZE_BAND_TOLERANCE):
+        return False
+    gap = first.lines[-1].y - second.lines[0].y
+    return 0 < gap <= second.font_size * _OVERLINE_GAP_FACTOR
+
+
+def merge_overline_headings(
+    paragraphs: list[Paragraph], classifications: list[Classification]
+) -> tuple[list[Paragraph], list[Classification]]:
+    """Réunit chaque surtitre avec le titre qu'il annonce.
+
+    Relevé sur deux des trois ouvrages de référence : « Unit 18 » au-dessus de
+    « Using a MySQL Database », « Chapitre 6 » au-dessus de « Utiliser
+    l'apprentissage automatique dans l'IA ». Séparés, le surtitre — plus petit
+    donc classé plus profond — devenait le parent de son propre titre, et tout
+    le chapitre partait dans la branche précédente.
+
+    Fusionner plutôt que reclasser : ce sont bien deux lignes d'un même titre,
+    et les garder distinctes obligerait toute la suite à connaître ce cas.
+    """
+    merged_paragraphs: list[Paragraph] = []
+    merged_results: list[Classification] = []
+    index = 0
+
+    while index < len(paragraphs):
+        current, result = paragraphs[index], classifications[index]
+        following = index + 1
+        if following < len(paragraphs) and _is_overline(
+            current, result, paragraphs[following], classifications[following]
+        ):
+            title = paragraphs[following]
+            merged_paragraphs.append(Paragraph(
+                text=f"{current.text.strip()} {title.text.strip()}",
+                lines=current.lines + title.lines,
+            ))
+            # Le titre porte le niveau ; on garde donc sa décision, en notant
+            # la fusion pour que le rapport puisse l'expliquer.
+            title_result = classifications[following]
+            merged_results.append(replace(
+                title_result, reasons=title_result.reasons + ["surtitre réuni au titre"],
+            ))
+            index += 2
+            continue
+
+        merged_paragraphs.append(current)
+        merged_results.append(result)
+        index += 1
+
+    return merged_paragraphs, merged_results
 
 
 def build_tree(elements: list[Element]) -> list[Section]:
