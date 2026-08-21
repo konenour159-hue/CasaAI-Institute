@@ -454,6 +454,26 @@ def _build_document_structure(file_bytes: bytes):
     return roots, report
 
 
+def preview_pdf(*, file_bytes: bytes, filename: str) -> tuple[str, int, dict, list]:
+    """Analyse un PDF **sans rien enregistrer** (§29).
+
+    Rejoue exactement la chaîne de l'import : c'est la condition pour que la
+    prévisualisation dise la vérité. Une analyse approchée, plus rapide mais
+    différente, ne servirait à rien — l'utilisateur valide ce qu'il a vu.
+
+    Renvoie le titre déduit, le nombre de pages, le rapport de qualité et
+    l'arbre des sections.
+    """
+    try:
+        reader = PdfReader(io.BytesIO(file_bytes))
+        page_count = len(reader.pages)
+    except Exception as e:
+        raise PdfExtractionError(f"Fichier PDF illisible : {e}") from e
+
+    roots, report = _build_document_structure(file_bytes)
+    return _title_from_filename(filename), page_count, report.to_dict(), roots
+
+
 class PdfImportService:
     def __init__(self, db: Session):
         self.db = db
