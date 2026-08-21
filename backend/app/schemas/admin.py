@@ -168,6 +168,11 @@ class PdfImportResponse(BaseModel):
     title: str
     pages_extracted: int
     warning: str | None = None
+    # Rapport de qualité du nouveau moteur d'import (§28) : compteurs,
+    # confiance moyenne et points à vérifier. Optionnel et purement additif —
+    # les clients existants qui l'ignorent continuent de fonctionner, et il
+    # vaut None si la reconstruction a échoué.
+    report: dict | None = None
 
 # --- Quiz (§15 cahier fonctionnel) -----------------------------------------
 # ADMIN et SUPER_ADMIN peuvent tous deux gérer les quiz (cf. require_content_admin

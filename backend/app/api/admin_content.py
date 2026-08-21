@@ -196,7 +196,7 @@ async def admin_import_pdf(
 
     file_bytes = await file.read()
     try:
-        course, lesson, page_count, warning = PdfImportService(db).import_pdf(
+        course, lesson, page_count, warning, report = PdfImportService(db).import_pdf(
             file_bytes=file_bytes, filename=file.filename or "import.pdf", school_id=school_id,
         )
     except ValidationError as e:
@@ -207,4 +207,5 @@ async def admin_import_pdf(
     return PdfImportResponse(
         course_id=course.id, lesson_id=lesson.id, title=course.title,
         pages_extracted=page_count, warning=warning,
+        report=report.to_dict() if report is not None else None,
     )

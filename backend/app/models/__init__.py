@@ -13,6 +13,7 @@ from app.models import (  # noqa: F401
     user,
     catalog,
     content,
+    document,
     lab,
     quiz,
     resource,
