@@ -1,0 +1,20 @@
+# Les fins de ligne sont normalisées en LF dans le dépôt ; Git les convertit
+# à la sortie selon la plateforme. Deux catégories doivent y échapper.
+
+# Ce qui est exécuté dans un conteneur Linux. Un clone sous Windows avec
+# core.autocrlf=true convertit ces fichiers en CRLF, le shebang devient
+# « #!/bin/sh\r », et le noyau ne trouve plus l'interpréteur :
+#   exec ./docker-entrypoint.sh: no such file or directory
+# Le conteneur redémarre alors en boucle, sans indice sur la vraie cause.
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Les PDF de test sont générés par code, mais toute donnée binaire ajoutée
+# ici ne doit jamais être « normalisée ».
+*.pdf binary
+*.png binary
+*.jpg binary
+*.woff2 binary
